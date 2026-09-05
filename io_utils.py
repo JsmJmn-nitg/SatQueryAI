@@ -48,7 +48,6 @@ def create_overlay(base_rgb, mask, color=(255, 50, 50), alpha=0.55):
     return np.clip(overlay, 0, 255).astype(np.uint8)
 
 def check_pair_compatible(arr1, meta1, arr2, meta2):
-    # Ensure Image 1 and Image 2 have the same dimensions for spatial analysis
     ok_shape = arr1.shape[1:] == arr2.shape[1:]
     ok_crs = meta1["crs"] == meta2["crs"]
     return {"ok_shape": ok_shape, "ok_crs": ok_crs, "note": "Checked pixel size/shape compatibility."}
