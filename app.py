@@ -5,7 +5,6 @@ from controller import route_query
 def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_tqdm=False)):
     base_trace = {"mode": mode, "query": query, "tools_used": []}
 
-    # 0) Validate inputs
     if img1_file is None:
         return ("System Error: Primary acquisition missing.", None, None, None, {"error": "missing_img1", **base_trace})
 
@@ -20,14 +19,11 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
             {"error": "missing_img2", **base_trace},
         )
 
-    # 1) Read Image 1
     progress(0.15, desc="Ingesting Primary Raster")
     arr1, meta1 = read_geotiff(img1_file.name)
     preview1 = to_rgb_preview(arr1)
-
     arr2 = meta2 = preview2 = None
 
-    # 2) Read Image 2
     if img2_file is not None and mode != "Single":
         progress(0.35, desc="Ingesting Secondary Raster")
         arr2, meta2 = read_geotiff(img2_file.name)
@@ -39,11 +35,9 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
                 msg = "System Error: Co-registration failed. Images must match in dimensions and CRS."
                 return (msg, preview1, preview1, preview2, {"error": "incompatible_pair", **compat, **base_trace})
 
-    # 3) Route to agent
     progress(0.70, desc="Executing Analysis Pipeline")
     answer, evidence, exec_summary = route_query(mode, img1_file.name, arr1, meta1, arr2, meta2, query)
     
-    # 4) Resolve rendering
     progress(0.92, desc="Rendering Visual Evidence")
     if evidence is None:
         evidence = preview1
@@ -54,181 +48,218 @@ def update_ui_for_mode(mode):
     if mode == "Single":
         return (
             gr.update(visible=False, value=None),
-            gr.update(value="Identify major infrastructure and describe the prevailing land-cover.", placeholder="Query primary image..."),
+            gr.update(value="Identify major infrastructure and describe the prevailing land-cover.", placeholder="Type your message for SatQuery AI..."),
             gr.update(visible=False),
-            gr.update(value="**Single-Image VQA**: Upload one GeoTIFF and input a natural language query for scene understanding.")
         )
     if mode == "Change Pair":
         return (
             gr.update(visible=True),
-            gr.update(value="Identify major structural changes, deforested regions, or new infrastructure between these timestamps.", placeholder="Query temporal change..."),
+            gr.update(value="Identify major structural changes, deforested regions, or new infrastructure between these timestamps.", placeholder="Type your message for SatQuery AI..."),
             gr.update(visible=True),
-            gr.update(value="**Bi-Temporal Change**: Upload two co-registered GeoTIFFs (matching CRS and pixel footprint) for change tracking.")
         )
     return (
         gr.update(visible=True),
-        gr.update(value="Isolate hydro-features and structured build-ups using fused reflectance and backscatter.", placeholder="Query optical-SAR fusion..."),
+        gr.update(value="Isolate hydro-features and structured build-ups using fused reflectance and backscatter.", placeholder="Type your message for SatQuery AI..."),
         gr.update(visible=True),
-        gr.update(value="**Multi-Modal Fusion**: Upload Optical and SAR passes of the same footprint to overcome atmospheric occlusion.")
     )
 
 # ----------------------------
-# ENTERPRISE THEME + CSS
+# FUTURISTIC UI DASHBOARD CSS
 # ----------------------------
 theme = gr.themes.Base(
-    primary_hue="teal",
-    neutral_hue="slate",
-    radius_size="md",
+    primary_hue="amber",
+    neutral_hue="zinc",
     font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
 )
 
 css = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
 :root {
-  --bg-main: #0a0e17;
-  --bg-panel: #111827;
-  --border: #1f2937;
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --accent: #0ea5e9;
-  --accent-hover: #0284c7;
+  --bg-dark: #09090b;
+  --panel-bg: #121216;
+  --panel-border: rgba(212, 175, 55, 0.25);
+  --gold-accent: #d4af37;
+  --gold-glow: 0px 4px 24px rgba(212, 175, 55, 0.15);
+  --text-main: #f4f4f5;
+  --text-muted: #a1a1aa;
 }
 
 body, .gradio-container {
-  background-color: var(--bg-main) !important;
+  background-color: var(--bg-dark) !important;
   color: var(--text-main) !important;
   font-family: 'Inter', sans-serif !important;
 }
 
-#app-container {
-  max-width: 1400px;
+#dashboard-container {
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 30px 20px;
+  padding: 2vh 2vw;
 }
 
-.panel-card {
-  background: var(--bg-panel) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+/* Glassmorphic Panels */
+.glass-panel {
+  background: var(--panel-bg) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--gold-glow) !important;
   padding: 20px !important;
 }
 
-.app-header {
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 20px;
+/* Typography & Headers */
+h1, h2, h3, h4, .markdown-text p {
+  color: var(--text-main) !important;
+  margin-bottom: 8px;
+}
+.sidebar-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--gold-accent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
   margin-bottom: 24px;
 }
 
-.app-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.5px;
-}
-
-.app-subtitle {
-  font-size: 14px;
-  color: var(--text-muted);
-  margin-top: 6px;
-}
-
+/* Inputs & Textareas */
 textarea, input[type="text"], input[type="file"] {
-  background-color: #0f141f !important;
-  border: 1px solid var(--border) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid var(--panel-border) !important;
+  color: var(--text-main) !important;
+  border-radius: 12px !important;
+}
+textarea:focus, input[type="text"]:focus {
+  border-color: var(--gold-accent) !important;
+  box-shadow: 0 0 0 1px var(--gold-accent) !important;
+}
+
+/* Buttons */
+button.primary {
+  background: transparent !important;
+  color: var(--gold-accent) !important;
+  border: 1px solid var(--gold-accent) !important;
+  border-radius: 12px !important;
+  font-weight: 500 !important;
+  transition: all 0.3s ease;
+}
+button.primary:hover {
+  background: var(--gold-accent) !important;
+  color: var(--bg-dark) !important;
+  box-shadow: var(--gold-glow) !important;
+}
+
+button.secondary {
+  background: rgba(255,255,255,0.05) !important;
+  color: var(--text-muted) !important;
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+}
+button.secondary:hover {
+  background: rgba(255,255,255,0.1) !important;
   color: var(--text-main) !important;
 }
 
-textarea:focus, input[type="text"]:focus {
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 0 1px var(--accent) !important;
+/* Chat Prompt Box Area */
+.chat-container {
+  background: linear-gradient(180deg, rgba(30,30,35,0.6) 0%, rgba(15,15,18,0.9) 100%) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 16px !important;
+  padding: 16px !important;
+  margin-top: -40px; /* Overlaps the visual evidence slightly */
+  position: relative;
+  z-index: 10;
+  backdrop-filter: blur(12px);
 }
 
-button.primary {
-  background-color: var(--accent) !important;
-  color: #fff !important;
-  border: none !important;
-  font-weight: 600 !important;
-  transition: all 0.2s;
-}
-
-button.primary:hover {
-  background-color: var(--accent-hover) !important;
-}
-
-.output-image {
-  border: 1px solid var(--border);
-  border-radius: 8px;
+/* Images */
+.output-img {
+  border-radius: 50% !important; /* Forces a globe-like circular mask for center image if square */
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--gold-glow);
   background-color: #000;
+  overflow: hidden;
+}
+.side-img {
+  border-radius: 12px !important;
+  border: 1px solid var(--panel-border);
+  background-color: #000;
+}
+
+/* Radio Buttons (Left Nav) */
+.gr-radio {
+  background: transparent !important;
+  border: none !important;
 }
 """
 
-with gr.Blocks(theme=theme, css=css, title="SatQuery Enterprise", elem_id="app-container") as demo:
-    gr.HTML(
-        """
-        <div class="app-header">
-            <div class="app-title">SatQuery Geospatial Intelligence</div>
-            <div class="app-subtitle">Enterprise multispectral, SAR, and temporal image analysis engine with auditable telemetry.</div>
-        </div>
-        """
-    )
-
+with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashboard-container") as demo:
+    
     with gr.Row(equal_height=False):
-        # Configuration Sidebar
-        with gr.Column(scale=3, min_width=320, elem_classes=["panel-card"]):
-            gr.Markdown("### Analysis Configuration")
-            mode_dropdown = gr.Radio(
-                choices=["Single", "Change Pair", "Optical+SAR Pair"],
-                value="Single",
-                label="Operation Mode"
-            )
-
-            mode_help = gr.Markdown(
-                "**Single-Image VQA**: Upload one GeoTIFF and input a natural language query for scene understanding."
-            )
-
-            gr.Markdown("---")
+        
+        # ==========================================
+        # LEFT SIDEBAR: Navigation & Configuration
+        # ==========================================
+        with gr.Column(scale=2, min_width=250):
+            gr.HTML("<div class='sidebar-title'>UI Dashboard</div>")
             
-            img1_upload = gr.File(label="Primary Acquisition (GeoTIFF)", file_count="single", file_types=[".tif", ".tiff"])
-            img2_upload = gr.File(label="Secondary Acquisition (GeoTIFF)", file_count="single", file_types=[".tif", ".tiff"], visible=False)
-
-            query_input = gr.Textbox(
-                label="Analytical Prompt",
-                value="Identify major infrastructure and describe the prevailing land-cover.",
-                lines=4
-            )
-
-            with gr.Row():
-                submit_btn = gr.Button("Execute Pipeline", variant="primary")
+            with gr.Group(elem_classes=["glass-panel"]):
+                mode_dropdown = gr.Radio(
+                    choices=["Single", "Change Pair", "Optical+SAR Pair"],
+                    value="Single",
+                    label="Operation Modes",
+                    elem_classes=["gr-radio"]
+                )
+            
+            gr.HTML("<br>")
+            
+            with gr.Group(elem_classes=["glass-panel"]):
+                gr.Markdown("#### Data Payload")
+                img1_upload = gr.File(label="Primary Acquisition", file_count="single", file_types=[".tif", ".tiff"])
+                img2_upload = gr.File(label="Secondary Acquisition", file_count="single", file_types=[".tif", ".tiff"], visible=False)
                 reset_btn = gr.Button("Reset State", variant="secondary")
 
-        # Output Main Panel
-        with gr.Column(scale=7, min_width=600):
-            with gr.Group(elem_classes=["panel-card"]):
-                gr.Markdown("### Intelligence Briefing")
-                ai_answer = gr.Textbox(show_label=False, lines=4, interactive=False, placeholder="System awaiting payload...")
+        # ==========================================
+        # CENTER STAGE: Visual Output & Chat Prompt
+        # ==========================================
+        with gr.Column(scale=5, min_width=500):
+            # Floating Globe / Main Evidence
+            with gr.Row(elem_classes=["output-img"]):
+                evidence_img = gr.Image(show_label=False, interactive=False, type="numpy", height=500, elem_classes=["output-img"])
+            
+            # Glassmorphic Chat Input Area
+            with gr.Group(elem_classes=["chat-container"]):
+                query_input = gr.Textbox(
+                    show_label=False,
+                    value="Identify major infrastructure and describe the prevailing land-cover.",
+                    placeholder="Type your message for SatQuery AI...",
+                    lines=2
+                )
+                submit_btn = gr.Button("Send Request ↗", variant="primary")
 
-            with gr.Row(elem_classes=["panel-card"]):
-                with gr.Column():
-                    gr.Markdown("#### Spatial Evidence (Overlay)")
-                    evidence_img = gr.Image(show_label=False, interactive=False, type="numpy", height=380, elem_classes=["output-image"])
+        # ==========================================
+        # RIGHT SIDEBAR: Recent Views & Insights
+        # ==========================================
+        with gr.Column(scale=3, min_width=300):
+            with gr.Group(elem_classes=["glass-panel"]):
+                gr.Markdown("### Recent Earth Views")
+                preview1_img = gr.Image(label="Source 1", interactive=False, type="numpy", height=150, elem_classes=["side-img"])
+                preview2_img = gr.Image(label="Source 2", interactive=False, type="numpy", height=150, elem_classes=["side-img"], visible=False)
                 
-                with gr.Column():
-                    with gr.Tabs():
-                        with gr.TabItem("Primary Source"):
-                            preview1_img = gr.Image(show_label=False, interactive=False, type="numpy", height=340, elem_classes=["output-image"])
-                        with gr.TabItem("Secondary Source", visible=False) as img2_container:
-                            preview2_img = gr.Image(show_label=False, interactive=False, type="numpy", height=340, elem_classes=["output-image"])
-
-            with gr.Accordion("System Telemetry & Auditable Trace", open=False, elem_classes=["panel-card"]):
+            gr.HTML("<br>")
+            
+            with gr.Group(elem_classes=["glass-panel"]):
+                gr.Markdown("### AI Insights")
+                ai_answer = gr.Textbox(show_label=False, lines=4, interactive=False, placeholder="Insights will appear here...")
+                
+            gr.HTML("<br>")
+                
+            with gr.Accordion("Telemetry Network", open=False, elem_classes=["glass-panel"]):
                 exec_summary = gr.JSON(show_label=False)
 
     # --- Event Binding
     mode_dropdown.change(
         fn=update_ui_for_mode,
         inputs=[mode_dropdown],
-        outputs=[img2_upload, query_input, img2_container, mode_help],
+        outputs=[img2_upload, query_input, preview2_img],
     )
 
     submit_btn.click(
@@ -239,12 +270,12 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Enterprise", elem_id="app-c
 
     def _reset(mode):
         ui = update_ui_for_mode(mode)
-        return (ui[0], ui[1], ui[2], ui[3], None, None, None, None, None, {})
+        return (ui[0], ui[1], ui[2], None, None, None, None, None, {})
 
     reset_btn.click(
         fn=_reset,
         inputs=[mode_dropdown],
-        outputs=[img2_upload, query_input, img2_container, mode_help, img1_upload, ai_answer, evidence_img, preview1_img, preview2_img, exec_summary],
+        outputs=[img2_upload, query_input, preview2_img, img1_upload, ai_answer, evidence_img, preview1_img, exec_summary],
     )
 
 if __name__ == "__main__":
