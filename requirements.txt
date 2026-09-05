@@ -1,0 +1,6 @@
+gradio==4.*
+rasterio
+opencv-python
+pillow
+numpy
+matplotlib
