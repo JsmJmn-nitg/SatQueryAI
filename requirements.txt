@@ -13,3 +13,4 @@ transformers
 accelerate
 safetensors
 gradio-client
+einops
