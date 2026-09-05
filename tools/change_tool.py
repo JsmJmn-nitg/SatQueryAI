@@ -9,7 +9,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 def run_change_detection(arr1, arr2):
     """
     arr1, arr2: numpy arrays from your GeoTIFFs
-    Returns: a binary mask (0 for no change, 1 for change)
+    Returns: a binary mask (0 for no change, 1 for change), change percentage, and stats dict
     """
     # 1. Preprocess arrays to PyTorch Tensors
     # tensor1 = torch.from_numpy(arr1).unsqueeze(0).to(device)
@@ -24,9 +24,9 @@ def run_change_detection(arr1, arr2):
     # Use simple absolute difference thresholding just to make the UI work!
     # ---------------------------------------------------------
     diff = np.abs(arr1.astype(np.float32) - arr2.astype(np.float32))
-    mean_diff = np.mean(diff, axis=0) # Collapse bands
+    mean_diff = np.mean(diff, axis=0)  # Collapse bands
     
-    threshold = np.percentile(mean_diff, 90) # Top 10% of changes
+    threshold = np.percentile(mean_diff, 90)  # Top 10% of changes
     binary_mask = (mean_diff > threshold).astype(np.uint8)
     
     # Calculate stats for the JSON trace
@@ -34,4 +34,11 @@ def run_change_detection(arr1, arr2):
     total_pixels = binary_mask.size
     change_pct = round((changed_pixels / total_pixels) * 100, 2)
     
-    return binary_mask, change_pct
+    stats = {
+        'changed_pixels': int(changed_pixels),
+        'total_pixels': int(total_pixels),
+        'threshold': float(threshold),
+        'method': 'Absolute Difference (90th percentile)'
+    }
+    
+    return binary_mask, change_pct, stats

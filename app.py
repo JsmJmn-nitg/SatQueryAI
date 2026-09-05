@@ -73,14 +73,14 @@ def update_ui_for_mode(mode):
         return (
             gr.update(visible=False, value=None),  # hide + clear Image 2 upload
             gr.update(
-                value="Describe the land-cover and major objects.",
+                value="Describe the land-cover types, infrastructure, and any notable environmental features visible in this satellite image.",
                 placeholder="Ask about Image 1…",
             ),
             gr.update(visible=False),              # hide Image 2 preview panel
             gr.update(
                 value=(
-                    "Single-image understanding (captioning / VQA). "
-                    "Upload one GeoTIFF and ask a question."
+                    "**Single-image understanding** (captioning / VQA). "
+                    "Upload one GeoTIFF and ask a question. The system uses a remote-sensing adapted VLM."
                 )
             ),
         )
@@ -89,14 +89,15 @@ def update_ui_for_mode(mode):
         return (
             gr.update(visible=True),
             gr.update(
-                value="What changed between these two dates? Identify major differences.",
+                value="What changed between these two dates? Identify and describe the major differences in land cover or infrastructure.",
                 placeholder="Ask about change (construction, deforestation, flooding)…",
             ),
             gr.update(visible=True),
             gr.update(
                 value=(
-                    "Bi-temporal change analysis. "
-                    "Upload two co-registered GeoTIFFs (same CRS + pixel dimensions)."
+                    "**Bi-temporal change analysis.** "
+                    "Upload two co-registered GeoTIFFs (same CRS + pixel dimensions). "
+                    "The system will highlight changed regions and quantify the change."
                 )
             ),
         )
@@ -105,14 +106,15 @@ def update_ui_for_mode(mode):
     return (
         gr.update(visible=True),
         gr.update(
-            value="Use both optical and SAR data to identify built-up areas and water bodies.",
+            value="Use both optical and SAR data to identify water bodies. Explain how the fusion improves detection.",
             placeholder="Ask about fusion results (water / built-up / roads / etc.)…",
         ),
         gr.update(visible=True),
         gr.update(
             value=(
-                "Optical + SAR fusion. "
-                "Upload both views of the same area to improve robustness (clouds/night)."
+                "**Optical + SAR fusion.** "
+                "Upload both views of the same area (optical + radar). "
+                "Fusion improves robustness to clouds, shadows, and illumination."
             )
         ),
     )
@@ -229,9 +231,9 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery AI", elem_id="app") as demo
         """
         <div class="header">
           <div>
-            <div class="title">SatQuery AI</div>
+            <div class="title">🛰️ SatQuery AI</div>
             <div class="subtitle">
-              Upload GeoTIFFs, ask a question, get an answer + visual evidence + an auditable trace.
+              Agentic Remote Sensing Assistant: Upload GeoTIFFs, ask questions, get visual evidence + auditable traces.
             </div>
           </div>
           <div class="badge">Single · Change Pair · Optical+SAR</div>
@@ -250,7 +252,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery AI", elem_id="app") as demo
             )
 
             mode_help = gr.Markdown(
-                "Single-image understanding (captioning / VQA). Upload one GeoTIFF and ask a question.",
+                "**Single-image understanding** (captioning / VQA). Upload one GeoTIFF and ask a question. The system uses a remote-sensing adapted VLM.",
                 elem_classes=[],
             )
 
@@ -268,7 +270,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery AI", elem_id="app") as demo
 
             query_input = gr.Textbox(
                 label="Query",
-                value="Describe the land-cover and major objects.",
+                value="Describe the land-cover types, infrastructure, and any notable environmental features visible in this satellite image.",
                 lines=4,
                 placeholder="Ask about Image 1…",
             )
@@ -280,17 +282,17 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery AI", elem_id="app") as demo
         # Main (outputs)
         with gr.Column(scale=8, min_width=520):
             with gr.Group(elem_classes=["card"]):
-                gr.Markdown("### Agent response")
+                gr.Markdown("### 🤖 Agent Response")
                 ai_answer = gr.Textbox(
                     show_label=False,
-                    lines=5,
+                    lines=8,
                     interactive=False,
                     placeholder="Your answer will appear here…",
                 )
 
             with gr.Row():
                 with gr.Column(elem_classes=["card"]):
-                    gr.Markdown("**Evidence / overlay**")
+                    gr.Markdown("**📊 Evidence / Overlay**")
                     evidence_img = gr.Image(
                         show_label=False,
                         interactive=False,
@@ -299,7 +301,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery AI", elem_id="app") as demo
                     )
 
                 with gr.Column(elem_classes=["card"]):
-                    gr.Markdown("**Image 1 preview**")
+                    gr.Markdown("**🖼️ Image 1 Preview**")
                     preview1_img = gr.Image(
                         show_label=False,
                         interactive=False,
@@ -308,7 +310,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery AI", elem_id="app") as demo
                     )
 
                 with gr.Column(elem_classes=["card"], visible=False) as img2_container:
-                    gr.Markdown("**Image 2 preview**")
+                    gr.Markdown("**🖼️ Image 2 Preview**")
                     preview2_img = gr.Image(
                         show_label=False,
                         interactive=False,
@@ -316,7 +318,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery AI", elem_id="app") as demo
                         height=320,
                     )
 
-            with gr.Accordion("Execution summary (JSON trace)", open=False, elem_classes=["card"]):
+            with gr.Accordion("🔍 Execution Summary (JSON Trace)", open=False, elem_classes=["card"]):
                 exec_summary = gr.JSON(show_label=False)
 
     # --- Events
