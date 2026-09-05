@@ -1,93 +1,288 @@
 import gradio as gr
-from io_utils import read_geotiff, to_rgb_preview, check_pair_compatible
-from controller import route_query
+import numpy as np
 
-def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_tqdm=False)):
-    import traceback
-    
-    base_trace = {"mode": mode, "query": query, "tools_used": []}
+from ui_styles import THEME, CSS, HERO_HTML
+from mock_backend import run_place_workflow, run_upload_workflow
 
+def safe_preview_from_file(file_obj):
+    if file_obj is None:
+        return None
+    path = getattr(file_obj, "name", None)
+    if not path:
+        return None
+
+    # Try GeoTIFF first
     try:
-        # 0) Validate inputs
-        if img1_file is None:
-            return ("Error: Please upload Image 1.", None, None, None, {"error": "missing_img1", **base_trace})
+        from io_utils import read_geotiff, to_rgb_preview
+        arr, _ = read_geotiff(path)
+        return to_rgb_preview(arr)
+    except Exception:
+        pass
 
-        if mode != "Single" and img2_file is None:
-            arr1, meta1 = read_geotiff(img1_file.name)
-            preview1 = to_rgb_preview(arr1)
-            return ("Error: Please upload Image 2 for this mode.", preview1, preview1, None, {"error": "missing_img2", **base_trace})
+    # Fallback: standard images
+    try:
+        from PIL import Image
+        img = Image.open(path).convert("RGB")
+        return np.array(img)
+    except Exception:
+        return None
 
-        # 1) Read Image 1
-        progress(0.15, desc="Reading Image 1")
-        arr1, meta1 = read_geotiff(img1_file.name)
-        preview1 = to_rgb_preview(arr1)
-
-        arr2 = meta2 = preview2 = None
-
-        # 2) Read Image 2 (if applicable)
-        if img2_file is not None and mode != "Single":
-            progress(0.35, desc="Reading Image 2")
-            arr2, meta2 = read_geotiff(img2_file.name)
-            preview2 = to_rgb_preview(arr2)
-
-            if mode in ["Change Pair", "Optical+SAR Pair"]:
-                compat = check_pair_compatible(arr1, meta1, arr2, meta2)
-                if not (compat["ok_shape"] and compat["ok_crs"]):
-                    return ("Error: Images must match in dimensions and CRS for paired analysis.", preview1, preview1, preview2, {"error": "incompatible_pair", **compat, **base_trace})
-
-        # 3) Route to controller
-        progress(0.60, desc="Agent Orchestrating Tools...")
-        
-        answer, evidence, exec_summary = route_query(
-            mode, arr1, meta1, arr2, meta2, query, preview1
-        )
-        
-        progress(0.95, desc="Rendering outputs")
-        if evidence is None:
-            evidence = preview1
-
-        return answer, evidence, preview1, preview2, exec_summary
-        
-    except Exception as e:
-        traceback.print_exc()
-        error_msg = f"❌ **Error in processing:**\n\n```\n{type(e).__name__}: {str(e)}\n```"
-        return (error_msg, None, None, None, {"error": str(e), "type": type(e).__name__, **base_trace})
-
-def update_ui_for_mode(mode):
+def update_ui_for_upload_mode(mode):
     if mode == "Single":
-        return (gr.update(visible=False, value=None), gr.update(value="Describe the land-cover types and any notable environmental features visible in this satellite image.", placeholder="Ask about Image 1…"), gr.update(visible=False))
+        return (
+            gr.update(visible=False, value=None),
+            gr.update(visible=False),
+            gr.update(value="Describe the land-cover, major objects, and any notable environmental features."),
+        )
     if mode == "Change Pair":
-        return (gr.update(visible=True), gr.update(value="What changed between these two dates? Identify the differences.", placeholder="Ask about change..."), gr.update(visible=True))
-    return (gr.update(visible=True), gr.update(value="Use both optical and SAR data to identify water bodies. Explain the findings.", placeholder="Ask about fusion results..."), gr.update(visible=True))
+        return (
+            gr.update(visible=True),
+            gr.update(visible=True),
+            gr.update(value="What changed between these two dates, and where did the change occur?"),
+        )
+    return (
+        gr.update(visible=True),
+        gr.update(visible=True),
+        gr.update(value="Use the optical and SAR images together to identify water and built-up regions."),
+    )
 
-theme = gr.themes.Soft(primary_hue="amber", neutral_hue="slate", radius_size="lg")
+def on_run_place(place, lat, lon, start_date, end_date, goal, query):
+    try:
+        lat_f = float(lat) if lat not in (None, "") else 28.6139
+        lon_f = float(lon) if lon not in (None, "") else 77.2090
+    except Exception:
+        lat_f, lon_f = 28.6139, 77.2090
 
-css = """
-body { font-family: 'Inter', sans-serif; background: #0b0f19; color: #e2e8f0; }
-.card { background: rgba(15, 23, 42, 0.7) !important; border: 1px solid rgba(148, 163, 184, 0.2) !important; border-radius: 12px !important; }
-"""
+    place = place.strip() if place else "User-provided location"
+    query = query.strip() if query else "Describe what is happening in this area."
 
-with gr.Blocks(theme=theme, css=css, title="SatQuery AI") as demo:
-    gr.Markdown("# 🛰️ SatQuery AI: Agentic Remote Sensing Assistant")
-    
-    with gr.Row():
-        with gr.Column(scale=4, elem_classes=["card"]):
-            mode_dropdown = gr.Radio(["Single", "Change Pair", "Optical+SAR Pair"], value="Single", label="Agent Mode")
-            img1_upload = gr.File(label="Image 1 (GeoTIFF)", file_types=[".tif", ".tiff"])
-            img2_upload = gr.File(label="Image 2 (Required for Pairs)", visible=False, file_types=[".tif", ".tiff"])
-            query_input = gr.Textbox(label="Query", lines=4)
-            submit_btn = gr.Button("Execute Agent Workflow", variant="primary")
+    return run_place_workflow(
+        place=place,
+        lat=lat_f,
+        lon=lon_f,
+        start_date=start_date,
+        end_date=end_date,
+        goal=goal,
+        query=query,
+    )
 
-        with gr.Column(scale=8):
-            ai_answer = gr.Textbox(label="🤖 Agent Response", lines=6, interactive=False, elem_classes=["card"])
+def on_run_upload(mode, img1, img2, query):
+    p1 = safe_preview_from_file(img1)
+    p2 = safe_preview_from_file(img2) if mode != "Single" else None
+
+    if mode != "Single" and img2 is None:
+        answer = (
+            "## Upload missing\n\n"
+            "This workflow needs **two images**.\n\n"
+            "- Upload **Image 1** and **Image 2**\n"
+            "- Ensure they are co-registered (same CRS + pixel dimensions)\n\n"
+            "Tip: If you don’t have data, use **Search by Place** to auto-fetch scenes (demo)."
+        )
+        return answer, p1, p1, None, {"error": "missing_image_2"}, None
+
+    answer_md, evidence, prev1, prev2, exec_summary, report_path = run_upload_workflow(
+        mode=mode, query=query, preview1=p1, preview2=p2
+    )
+
+    return answer_md, evidence, prev1, prev2, exec_summary, report_path
+
+
+with gr.Blocks(theme=THEME, css=CSS, title="SatQuery AI", elem_id="app") as demo:
+    gr.HTML(HERO_HTML)
+
+    with gr.Tabs() as tabs:
+        # TAB 1 — Search by Place
+        with gr.Tab("Search by Place", id="place"):
             with gr.Row():
-                evidence_img = gr.Image(label="📊 Visual Evidence", type="numpy", height=300)
-                preview1_img = gr.Image(label="🖼️ Image 1 Preview", type="numpy", height=300)
-                img2_container = gr.Image(label="🖼️ Image 2 Preview", type="numpy", height=300, visible=False)
-            exec_summary = gr.JSON(label="🔍 Auditable Execution Trace (JSON)")
+                with gr.Column(scale=5, min_width=340, elem_classes=["glass", "cardPad"]):
+                    gr.Markdown('<div class="sectionTitle">Step 1 — Describe your place</div>', elem_classes=["tightMd"])
 
-    mode_dropdown.change(fn=update_ui_for_mode, inputs=[mode_dropdown], outputs=[img2_upload, query_input, img2_container])
-    submit_btn.click(fn=run_satquery, inputs=[mode_dropdown, img1_upload, img2_upload, query_input], outputs=[ai_answer, evidence_img, preview1_img, img2_container, exec_summary])
+                    place = gr.Textbox(
+                        label="Place / landmark / description",
+                        placeholder="e.g., 'near Chilika Lake, Odisha' or 'Haldwani, Uttarakhand'",
+                    )
+
+                    with gr.Row():
+                        lat = gr.Textbox(label="Latitude (optional)", placeholder="e.g., 19.81")
+                        lon = gr.Textbox(label="Longitude (optional)", placeholder="e.g., 85.31")
+
+                    gr.Markdown("<hr>")
+                    gr.Markdown('<div class="sectionTitle">Step 2 — Pick time & goal</div>', elem_classes=["tightMd"])
+
+                    with gr.Row():
+                        start_date = gr.Textbox(label="Start date", value="2024-01-01")
+                        end_date = gr.Textbox(label="End date", value="2024-12-31")
+
+                    goal = gr.Radio(
+                        ["Understand scene", "Water / flooding", "Wildfire", "Urban growth", "Detect change", "Custom"],
+                        value="Understand scene",
+                        label="What do you want to know?",
+                    )
+
+                    query = gr.Textbox(
+                        label="Your question (plain language)",
+                        lines=4,
+                        placeholder="e.g., 'Is there flooding? show where.'",
+                        value="What is happening in this area? Summarize land-cover and any notable activity.",
+                    )
+
+                    gr.Markdown(
+                        "<div class='smallHint'>For PPT/demo: this mode returns a realistic UI + trace. Later you can wire SentinelHub/Google Earth here.</div>"
+                    )
+
+                    with gr.Row():
+                        run_place = gr.Button("Run Analysis", variant="primary")
+                        reset_place = gr.Button("Reset", variant="secondary")
+
+                with gr.Column(scale=7, min_width=420):
+                    with gr.Group(elem_classes=["glass", "cardPad"]):
+                        gr.Markdown('<div class="sectionTitle">Agent response</div>')
+                        answer_place = gr.Markdown(value="*", elem_classes=["tightMd"])
+
+                    with gr.Row():
+                        with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
+                            gr.Markdown('<div class="sectionTitle">Evidence overlay</div>')
+                            evidence_place = gr.Image(type="numpy", height=280, show_label=False)
+
+                        with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
+                            gr.Markdown('<div class="sectionTitle">Optical (preview)</div>')
+                            optical_place = gr.Image(type="numpy", height=280, show_label=False)
+
+                    with gr.Row():
+                        with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
+                            gr.Markdown('<div class="sectionTitle">SAR (preview)</div>')
+                            sar_place = gr.Image(type="numpy", height=260, show_label=False)
+
+                        with gr.Column():
+                            map_html = gr.HTML(value="", elem_classes=[])
+
+                    with gr.Accordion("Execution Trace (auditable JSON)", open=False, elem_classes=["glass", "cardPad"]):
+                        trace_place = gr.JSON(show_label=False)
+
+                    report_place = gr.File(label="Download report", interactive=False)
+
+            def _reset_place():
+                return (
+                    "", "", "",
+                    "2024-01-01", "2024-12-31",
+                    "Understand scene",
+                    "What is happening in this area? Summarize land-cover and any notable activity.",
+                    "", None, None, None, "", {}, None
+                )
+
+            run_place.click(
+                fn=on_run_place,
+                inputs=[place, lat, lon, start_date, end_date, goal, query],
+                outputs=[answer_place, evidence_place, optical_place, sar_place, map_html, trace_place, report_place],
+            )
+            reset_place.click(
+                fn=_reset_place,
+                inputs=[],
+                outputs=[place, lat, lon, start_date, end_date, goal, query, answer_place, evidence_place, optical_place, sar_place, map_html, trace_place, report_place],
+            )
+
+        # TAB 2 — Upload Images
+        with gr.Tab("Upload Images", id="upload"):
+            with gr.Row():
+                with gr.Column(scale=5, min_width=340, elem_classes=["glass", "cardPad"]):
+                    gr.Markdown('<div class="sectionTitle">Step 1 — Choose workflow</div>', elem_classes=["tightMd"])
+
+                    mode = gr.Radio(
+                        choices=["Single", "Change Pair", "Optical+SAR Pair"],
+                        value="Single",
+                        label="Workflow",
+                    )
+
+                    gr.Markdown("<div class='smallHint'>Single → caption/VQA. Change Pair → bi-temporal. Optical+SAR → cross-modal fusion.</div>")
+                    gr.Markdown("<hr>")
+
+                    gr.Markdown('<div class="sectionTitle">Step 2 — Upload data</div>', elem_classes=["tightMd"])
+                    img1 = gr.File(
+                        label="Image 1 (GeoTIFF / TIFF / PNG / JPG)",
+                        file_count="single",
+                        file_types=[".tif", ".tiff", ".png", ".jpg", ".jpeg"],
+                    )
+                    img2 = gr.File(
+                        label="Image 2 (required for paired modes)",
+                        file_count="single",
+                        file_types=[".tif", ".tiff", ".png", ".jpg", ".jpeg"],
+                        visible=False,
+                    )
+
+                    img2_hint = gr.Markdown(
+                        "<div class='smallHint'>Paired modes expect co-registered scenes (same CRS + pixel dimensions).</div>",
+                        visible=False,
+                    )
+
+                    gr.Markdown("<hr>")
+                    gr.Markdown('<div class="sectionTitle">Step 3 — Ask</div>', elem_classes=["tightMd"])
+
+                    query_u = gr.Textbox(
+                        label="Query",
+                        lines=4,
+                        value="Describe the land-cover, major objects, and any notable environmental features.",
+                        placeholder="Ask in plain language…",
+                    )
+
+                    with gr.Row():
+                        run_upload = gr.Button("Run Analysis", variant="primary")
+                        reset_upload = gr.Button("Reset", variant="secondary")
+
+                with gr.Column(scale=7, min_width=420):
+                    with gr.Group(elem_classes=["glass", "cardPad"]):
+                        gr.Markdown('<div class="sectionTitle">Agent response</div>')
+                        answer_u = gr.Markdown(value="*", elem_classes=["tightMd"])
+
+                    with gr.Row():
+                        with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
+                            gr.Markdown('<div class="sectionTitle">Evidence overlay</div>')
+                            evidence_u = gr.Image(type="numpy", height=280, show_label=False)
+
+                        with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
+                            gr.Markdown('<div class="sectionTitle">Image 1 preview</div>')
+                            prev1_u = gr.Image(type="numpy", height=280, show_label=False)
+
+                    with gr.Row():
+                        with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"], visible=False) as img2_prev_col:
+                            gr.Markdown('<div class="sectionTitle">Image 2 preview</div>')
+                            prev2_u = gr.Image(type="numpy", height=260, show_label=False)
+
+                        with gr.Column(elem_classes=["glass", "cardPad"]):
+                            gr.Markdown('<div class="sectionTitle">Deliverables</div>')
+                            report_u = gr.File(label="Download report", interactive=False)
+
+                    with gr.Accordion("Execution Trace (auditable JSON)", open=False, elem_classes=["glass", "cardPad"]):
+                        trace_u = gr.JSON(show_label=False)
+
+            mode.change(fn=update_ui_for_upload_mode, inputs=[mode], outputs=[img2, img2_prev_col, query_u]).then(
+                fn=lambda m: gr.update(visible=(m != "Single")),
+                inputs=[mode],
+                outputs=[img2_hint],
+            )
+
+            run_upload.click(
+                fn=on_run_upload,
+                inputs=[mode, img1, img2, query_u],
+                outputs=[answer_u, evidence_u, prev1_u, prev2_u, trace_u, report_u],
+            )
+
+            def _reset_upload():
+                return (
+                    "Single",
+                    None,
+                    gr.update(visible=False, value=None),
+                    gr.update(visible=False),
+                    gr.update(value="Describe the land-cover, major objects, and any notable environmental features."),
+                    "",
+                    None, None, None, {}, None
+                )
+
+            reset_upload.click(
+                fn=_reset_upload,
+                inputs=[],
+                outputs=[mode, img1, img2, img2_prev_col, query_u, answer_u, evidence_u, prev1_u, prev2_u, trace_u, report_u],
+            )
+
 
 if __name__ == "__main__":
     demo.launch(share=True)
