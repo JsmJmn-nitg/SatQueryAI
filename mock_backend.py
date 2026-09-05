@@ -117,61 +117,56 @@ def save_report_file(report_md: str, filename: str = "satquery_report.md") -> st
         f.write(report_md)
     return path
 
-# ===== In ./mock_backend.py =====
+def smartish_answer(query: str, mode: str, place: str | None = None) -> str:
+    intro_text = "This analysis is based on automatically fetched satellite data for your area of interest. The region shows a mix of urban, agricultural, and natural land-cover types. Key findings include:"
+    if mode != "Autofetch" and mode != "Place Search":
+         intro_text = "This image shows a region with a mix of urban, agricultural, and natural land-cover types. Major objects include:"
+         
+    title = "Coastal Land-Cover Overview" if place == "Coastal Region" else f"{mode} Analysis"
     
-    def smartish_answer(query: str, mode: str, place: str | None = None) -> str:
-        # We output strict HTML here so CSS can style the beautiful list shown in the mockup
-        
-        intro_text = "This analysis is based on automatically fetched satellite data for your area of interest. The region shows a mix of urban, agricultural, and natural land-cover types. Key findings include:"
-        if mode != "Autofetch" and mode != "Place Search":
-             intro_text = "This image shows a region with a mix of urban, agricultural, and natural land-cover types. Major objects include:"
-             
-        title = "Coastal Land-Cover Overview" if place == "Coastal Region" else f"{mode} Analysis"
-        
-        html_output = f"""
-        <h2>{title}</h2>
-        <p>{intro_text}</p>
-        
-        <ul class="icon-list">
-            <li class="icon-list-item">
-                <div class="icon-circle ic-red">🏢</div>
-                <div class="item-text">
-                    <h4>Built-up area</h4>
-                    <p>Dense urban settlement along the coast and inland.</p>
-                </div>
-            </li>
-            <li class="icon-list-item">
-                <div class="icon-circle ic-blue">💧</div>
-                <div class="item-text">
-                    <h4>Water body</h4>
-                    <p>Sea/ocean on the left side and small inland water bodies.</p>
-                </div>
-            </li>
-            <li class="icon-list-item">
-                <div class="icon-circle ic-green">🌿</div>
-                <div class="item-text">
-                    <h4>Vegetation</h4>
-                    <p>Green patches of dense vegetation and agricultural fields.</p>
-                </div>
-            </li>
-            <li class="icon-list-item">
-                <div class="icon-circle ic-yellow">🛣️</div>
-                <div class="item-text">
-                    <h4>Roads</h4>
-                    <p>Major road network connecting urban areas.</p>
-                </div>
-            </li>
-            <li class="icon-list-item">
-                <div class="icon-circle ic-purple">🟤</div>
-                <div class="item-text">
-                    <h4>Bare land</h4>
-                    <p>Some areas of exposed soil or sparse vegetation.</p>
-                </div>
-            </li>
-        </ul>
-        """
-        return html_output
-
+    return f"""
+    <h3 style="margin-top:0;">{title}</h3>
+    <p style="color:#9CA3AF; font-size:14px; line-height:1.5;">{intro_text}</p>
+    
+    <ul class="icon-list">
+        <li class="icon-list-item">
+            <div class="icon-circle ic-red">🏢</div>
+            <div class="item-text">
+                <h4>Built-up area</h4>
+                <p>Dense urban settlement along the coast and inland.</p>
+            </div>
+        </li>
+        <li class="icon-list-item">
+            <div class="icon-circle ic-blue">💧</div>
+            <div class="item-text">
+                <h4>Water body</h4>
+                <p>Sea/ocean on the left side and small inland water bodies.</p>
+            </div>
+        </li>
+        <li class="icon-list-item">
+            <div class="icon-circle ic-green">🌿</div>
+            <div class="item-text">
+                <h4>Vegetation</h4>
+                <p>Green patches of dense vegetation and agricultural fields.</p>
+            </div>
+        </li>
+        <li class="icon-list-item">
+            <div class="icon-circle ic-yellow">🛣️</div>
+            <div class="item-text">
+                <h4>Roads</h4>
+                <p>Major road network connecting urban areas.</p>
+            </div>
+        </li>
+        <li class="icon-list-item">
+            <div class="icon-circle ic-purple">🟤</div>
+            <div class="item-text">
+                <h4>Bare land</h4>
+                <p>Some areas of exposed soil or sparse vegetation.</p>
+            </div>
+        </li>
+    </ul>
+    """
+    
 def run_place_workflow(place: str, lat: float, lon: float, start_date: str, end_date: str, goal: str, query: str):
     planned = []
     if goal in ["Understand scene", "Custom"]:

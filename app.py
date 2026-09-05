@@ -1,191 +1,151 @@
 # ===== ./app.py =====
-import gradio as gr
-from ui_styles import THEME, CSS
+import streamlit as st
+import numpy as np
+from PIL import Image
 from mock_backend import run_place_workflow, run_upload_workflow
 
-# ================= HTML TEMPLATES =================
-SIDEBAR_HTML = """
-<div class="brand">
-    <div class="brand-icon">☄️</div>
-    <div class="brand-text">
-        <h1>SatQuery AI</h1>
-        <p>Vision-Language Assistant</p>
-    </div>
-</div>
-<button class="nav-btn btn-new">＋ New Query</button>
-<button class="nav-btn btn-nav active">🏠 Home</button>
-<button class="nav-btn btn-nav">⏱ History</button>
+# 1. Page Configuration (Must be first)
+st.set_page_config(
+    page_title="SatQuery AI", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
-<div class="sidebar-bottom">
-    <div class="status-card">
-        <div class="status-dot"></div>
-        <div>System Status<br><span style="color:var(--text-muted);font-size:10px;">All systems operational</span></div>
-    </div>
-</div>
-"""
-
-HEADER_HTML = """
-<div class="top-nav">
-    <div></div>
-    <div class="top-nav-right">
-        <span>❓ Help</span>
-        <span id="theme-toggle" style="cursor:pointer; font-size: 18px;">☀️</span>
-        <div class="user-avatar">U</div>
-        <span>User ⌄</span>
-    </div>
-</div>
-"""
-
-HERO_ART_HTML = """
-<div class="hero-bg">
-    <svg width="600" height="400" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" style="opacity: 0.05;">
-        <ellipse cx="400" cy="150" rx="150" ry="60" fill="none" stroke="currentColor" stroke-width="1" transform="rotate(-20 400 150)"/>
-        <ellipse cx="400" cy="150" rx="200" ry="80" fill="none" stroke="currentColor" stroke-width="1" transform="rotate(-20 400 150)"/>
-        <ellipse cx="400" cy="150" rx="250" ry="100" fill="none" stroke="currentColor" stroke-width="1" transform="rotate(-20 400 150)"/>
-    </svg>
-    <div class="planet-orb"></div>
-</div>
-"""
-
-# ================= APP LOGIC =================
-def handle_run(mode, query, img1, img2, place_text):
-    query = (query or "").strip() or "What are the main land cover types in this image?"
+# 2. Inject Custom CSS for the Result Icons & Cards
+st.markdown("""
+<style>
+    /* Styling for the custom HTML result list */
+    .icon-list { list-style: none; padding: 0; margin-top: 15px; }
+    .icon-list-item { display: flex; align-items: flex-start; margin-bottom: 20px; }
+    .icon-circle { 
+        width: 32px; height: 32px; border-radius: 50%; 
+        display: flex; justify-content: center; align-items: center; 
+        margin-right: 15px; color: white; font-size: 14px; flex-shrink: 0;
+    }
+    .ic-red { background-color: #ef4444; }
+    .ic-blue { background-color: #3b82f6; }
+    .ic-green { background-color: #10b981; }
+    .ic-yellow { background-color: #f59e0b; }
+    .ic-purple { background-color: #8b5cf6; }
+    .item-text h4 { margin: 0 0 4px 0; font-size: 15px; font-weight: 600;}
+    .item-text p { margin: 0; font-size: 14px; color: #9CA3AF; line-height: 1.4;}
     
-    if mode == "Autofetch":
-        answer_html, evidence, _, _, _, _, _ = run_place_workflow(
-            place=place_text or "Coastal Region", lat=0, lon=0, start_date="", end_date="", goal="Understand scene", query=query
-        )
-    else:
-        answer_html, evidence, _, _, _, _ = run_upload_workflow(
-            mode=mode, query=query, preview1=img1, preview2=img2
-        )
+    /* Hide Streamlit default top branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Make buttons look better */
+    .stButton>button { border-radius: 8px; font-weight: 600; }
+</style>
+""", unsafe_allow_html=True)
+
+# 3. Sidebar Setup
+with st.sidebar:
+    st.markdown("## ☄️ SatQuery AI")
+    st.markdown("<p style='color:gray; font-size:13px; margin-top:-10px;'>Vision-Language Assistant</p>", unsafe_allow_html=True)
+    
+    st.write("")
+    if st.button("＋ New Query", type="primary", use_container_width=True):
+        st.session_state.results = None
+        st.rerun()
         
-    return gr.update(visible=True), answer_html, evidence
-
-def toggle_mode(btn_name):
-    # Returns updates for the 4 mode buttons, the upload area, and autofetch area
-    modes = ["Single Image", "Optical + SAR", "Change Detection", "Autofetch"]
-    btn_updates = [gr.update(elem_classes=["mode-btn", "selected"] if m == btn_name else ["mode-btn"]) for m in modes]
+    st.button("🏠 Home", use_container_width=True)
+    st.button("⏱ History", use_container_width=True)
     
-    show_upload = btn_name in ["Single Image", "Optical + SAR", "Change Detection"]
-    show_second_upload = btn_name in ["Optical + SAR", "Change Detection"]
-    show_autofetch = btn_name == "Autofetch"
-    
-    area_updates = [
-        gr.update(visible=show_upload),         # upload_area group
-        gr.update(visible=show_second_upload),  # img_upload_2
-        gr.update(visible=show_autofetch)       # autofetch_area
-    ]
-    return btn_updates + area_updates
+    st.markdown("<br>" * 10, unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("""
+        <div style='display: flex; align-items: center; gap: 10px;'>
+            <div style='width: 10px; height: 10px; border-radius: 50%; background-color: #10b981;'></div>
+            <div>
+                <div style='font-weight: 600; font-size: 14px;'>System Status</div>
+                <div style='font-size: 12px; color: gray;'>All systems operational</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-# ================= UI LAYOUT =================
-with gr.Blocks(theme=THEME, css=CSS, title="SatQuery AI") as demo:
-    with gr.Row(elem_id="app-container"):
+
+# 4. Main Content Area
+st.markdown("<h1>Good morning! 👋 <span style='font-size: 18px; color: gray; font-weight: normal;'>Ask anything about your remote sensing imagery.</span></h1>", unsafe_allow_html=True)
+
+# Search Input
+query = st.text_input("Query", placeholder='Try: "What are the main land cover types in this image?"', label_visibility="collapsed")
+
+# 5. Mode Selection using Native Streamlit Tabs
+tab_single, tab_fusion, tab_change, tab_auto = st.tabs(["🖼️ Single Image", "🎯 Optical + SAR", "⚡ Change Detection", "✨ Autofetch Mode"])
+
+img1, img2, place_input = None, None, ""
+active_mode = "Autofetch"
+
+with tab_single:
+    st.markdown("#### Upload Image\n<small style='color:gray;'>GeoTIFF / TIFF / PNG (Max 200MB)</small>", unsafe_allow_html=True)
+    file1 = st.file_uploader("Upload Primary Image", type=['tif', 'tiff', 'png', 'jpg'], label_visibility="collapsed")
+    if file1: img1 = np.array(Image.open(file1))
+    if st.button("Run Analysis", key="b1", type="primary"):
+        active_mode, st.session_state.run = "Single Image", True
+
+with tab_fusion:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Optical Image**")
+        f1 = st.file_uploader("Opt", type=['tif', 'png', 'jpg'], key="f1_f", label_visibility="collapsed")
+        if f1: img1 = np.array(Image.open(f1))
+    with col2:
+        st.markdown("**SAR Image**")
+        f2 = st.file_uploader("SAR", type=['tif', 'png', 'jpg'], key="f2_f", label_visibility="collapsed")
+        if f2: img2 = np.array(Image.open(f2))
+    if st.button("Run Fusion Analysis", key="b2", type="primary"):
+        active_mode, st.session_state.run = "Optical+SAR Pair", True
+
+with tab_change:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Pre-Event Image**")
+        c1 = st.file_uploader("Pre", type=['tif', 'png', 'jpg'], key="c1_c", label_visibility="collapsed")
+        if c1: img1 = np.array(Image.open(c1))
+    with col2:
+        st.markdown("**Post-Event Image**")
+        c2 = st.file_uploader("Post", type=['tif', 'png', 'jpg'], key="c2_c", label_visibility="collapsed")
+        if c2: img2 = np.array(Image.open(c2))
+    if st.button("Run Change Detection", key="b3", type="primary"):
+        active_mode, st.session_state.run = "Change Pair", True
+
+with tab_auto:
+    st.info("Describe your area of interest, and we'll automatically fetch the best available satellite data and provide insights.")
+    place_input = st.text_input("Location", placeholder="E.g., Coastal Region, San Francisco", label_visibility="collapsed")
+    if st.button("Run Autofetch", key="b4", type="primary"):
+        active_mode, st.session_state.run = "Autofetch", True
+
+# 6. Execution Logic
+if getattr(st.session_state, 'run', False):
+    st.session_state.run = False
+    with st.spinner("Agentic pipeline running..."):
+        if active_mode == "Autofetch":
+            ans_html, ev, opt, sar, map_h, exec_s, rep = run_place_workflow(
+                place=place_input, lat=0, lon=0, start_date="", end_date="", goal="Understand scene", query=query
+            )
+        else:
+            ans_html, ev, _, _, exec_s, rep = run_upload_workflow(
+                mode=active_mode, query=query, preview1=img1, preview2=img2
+            )
+        st.session_state.results = (ans_html, ev, exec_s)
+
+# 7. Results Section
+if getattr(st.session_state, 'results', None):
+    st.markdown("---")
+    ans_html, evidence_img, trace = st.session_state.results
+    
+    st.markdown("### 💬 Answer")
+    
+    # Split into 2 columns just like the mockup (Text on left, Image on right)
+    res_col1, res_col2 = st.columns([1, 1.2])
+    
+    with res_col1:
+        st.markdown(ans_html, unsafe_allow_html=True)
+        st.markdown("<br><div style='background:rgba(16,185,129,0.15); color:#10b981; padding:6px 14px; border-radius:20px; display:inline-block; font-weight:600; font-size:14px;'>Confidence Score &nbsp; 0.88</div>", unsafe_allow_html=True)
         
-        # --- LEFT SIDEBAR ---
-        with gr.Column(elem_id="sidebar-col"):
-            gr.HTML(SIDEBAR_HTML)
-                    
-        # --- MAIN CONTENT ---
-        with gr.Column(elem_id="main-col"):
-            gr.HTML(HEADER_HTML)
-            gr.HTML(HERO_ART_HTML)
-            
-            with gr.Column(elem_classes=["content-wrapper"]):
-                
-                # Header Texts
-                gr.HTML("""
-                    <div class="greeting">Good morning! 👋 <span>Ask anything about your remote sensing imagery.</span></div>
-                """)
-                
-                # Chat Input Box
-                with gr.Group(elem_classes=["search-box"]):
-                    with gr.Row():
-                        query_input = gr.Textbox(
-                            placeholder='Try: "What are the main land cover types in this image?"', 
-                            show_label=False, lines=1, max_lines=3, scale=1
-                        )
-                        submit_btn = gr.Button("↗", elem_classes=["send-btn-wrap"])
-                
-                # Mode Selectors
-                with gr.Row(elem_classes=["mode-tabs"]):
-                    m_single = gr.Button("🖼 Single Image", elem_classes=["mode-btn"])
-                    m_fusion = gr.Button("🎯 Optical + SAR", elem_classes=["mode-btn"])
-                    m_change = gr.Button("⚡ Change Detection", elem_classes=["mode-btn"])
-                    m_auto   = gr.Button("✨ Autofetch", elem_classes=["mode-btn", "selected"])
-                
-                # Dynamic Input Area
-                with gr.Group(elem_classes=["dynamic-area"]):
-                    # Upload Area State
-                    with gr.Row(visible=False, elem_classes=["upload-grid"]) as upload_area:
-                        with gr.Column(elem_classes=["upload-box"]):
-                            img_upload_1 = gr.Image(type="numpy", label="Upload Primary Image", elem_id="img1")
-                        with gr.Column(elem_classes=["upload-box"], visible=False) as upload_area_2:
-                            img_upload_2 = gr.Image(type="numpy", label="Upload Secondary Image (SAR/Post)", elem_id="img2")
-                    
-                    # Autofetch Area State
-                    with gr.Row(visible=True, elem_classes=["autofetch-ui"]) as autofetch_area:
-                        with gr.Column():
-                            gr.HTML("<h3>✨ Autofetch Mode</h3><p>Describe your area of interest, and we'll automatically fetch the best available satellite data and provide insights.</p>")
-                            place_input = gr.Textbox(placeholder="E.g., Coastal Region, San Francisco", show_label=False, container=False)
-                            
-                # Selected mode state tracking
-                current_mode = gr.State("Autofetch")
-
-                # Results Area (Hidden until run)
-                with gr.Group(visible=False, elem_classes=["results-card"]) as results_area:
-                    gr.HTML("<div class='answer-badge'>💬 Answer</div>")
-                    
-                    with gr.Row(elem_classes=["results-grid"]):
-                        # Left Text Analysis
-                        with gr.Column(elem_classes=["result-text-area"]):
-                            answer_html = gr.HTML()
-                            gr.HTML("""
-                                <div class="confidence">
-                                    Confidence Score <span class="conf-score">0.88</span>
-                                </div>
-                            """)
-                            
-                        # Right Image Analysis
-                        with gr.Column(elem_classes=["result-image-area"]):
-                            result_img = gr.Image(show_label=False, interactive=False)
-                            gr.HTML("""
-                                <div class="image-controls">
-                                    <div class="img-btn">🔍</div><div class="img-btn">➕</div><div class="img-btn">🔲</div>
-                                </div>
-                                <div class="legend-box">
-                                    <h5>Detected Objects</h5>
-                                    <div class="legend-item"><div class="legend-color ic-red"></div> Built-up Area</div>
-                                    <div class="legend-item"><div class="legend-color ic-blue"></div> Water Body</div>
-                                    <div class="legend-item"><div class="legend-color ic-green"></div> Vegetation</div>
-                                    <div class="legend-item"><div class="legend-color ic-yellow"></div> Roads</div>
-                                    <div class="legend-item"><div class="legend-color ic-purple"></div> Bare Land</div>
-                                </div>
-                            """)
-
-    # Events
-    mode_btns = [m_single, m_fusion, m_change, m_auto]
-    
-    m_single.click(lambda: "Single Image", None, current_mode).then(toggle_mode, inputs=[gr.State("Single Image")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
-    m_fusion.click(lambda: "Optical + SAR", None, current_mode).then(toggle_mode, inputs=[gr.State("Optical + SAR")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
-    m_change.click(lambda: "Change Detection", None, current_mode).then(toggle_mode, inputs=[gr.State("Change Detection")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
-    m_auto.click(lambda: "Autofetch", None, current_mode).then(toggle_mode, inputs=[gr.State("Autofetch")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
-
-    submit_btn.click(
-        fn=handle_run,
-        inputs=[current_mode, query_input, img_upload_1, img_upload_2, place_input],
-        outputs=[results_area, answer_html, result_img]
-    )
-
-    # Optional UI script to sync the sun/moon icon with Gradio's internal theme state
-    demo.load(None, None, None, js="""
-        () => {
-            const toggle = document.getElementById('theme-toggle');
-            toggle.addEventListener('click', () => {
-                document.querySelector('.gradio-container').classList.toggle('dark');
-            });
-        }
-    """)
-
-if __name__ == "__main__":
-    demo.launch(theme=THEME, css=CSS, share=True)
+    with res_col2:
+        st.image(evidence_img, use_container_width=True)
+        
+    with st.expander("🛠️ View Agent Execution Trace & Report"):
+        st.json(trace)

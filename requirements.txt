@@ -15,3 +15,4 @@ safetensors
 gradio-client
 einops
 requests
+streamlit
