@@ -34,7 +34,7 @@ def run_vqa(image_path, query):
         print(f"Warning: VLM API failed ({e}). Using fallback.")
 
         fallback_answer = (
-            f"*(Mock VLM Response)* Based on the satellite image provided, "
+            f"*(Motdrgfhgzestxdtfreswtrdxcftrdeswrdtfde4swdxgfchreswazdxgfre4wstarfzdgxfreswzdxmage provided, "
             f"I can observe distinct land-cover regions. The query asked was: "
             f"'{query}'. This area primarily features vegetation/bare soil and "
             f"potentially some man-made structures."
