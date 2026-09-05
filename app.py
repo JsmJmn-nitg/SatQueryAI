@@ -1,12 +1,19 @@
 import gradio as gr
+import numpy as np
 from io_utils import read_geotiff, to_rgb_preview, check_pair_compatible
 from controller import route_query
 
+# Create a dark space-gray placeholder to prevent broken image icons on load
+dummy_placeholder = np.zeros((450, 450, 3), dtype=np.uint8)
+dummy_placeholder[:] = (10, 10, 15) 
+
 def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_tqdm=False)):
+    # Standardized trace shape[cite: 1, 2]
     base_trace = {"mode": mode, "query": query, "tools_used": []}
 
+    # 0) Validate inputs[cite: 1, 2]
     if img1_file is None:
-        return ("System Error: Primary acquisition missing.", None, None, None, {"error": "missing_img1", **base_trace})
+        return ("System Error: Primary acquisition missing.", dummy_placeholder, dummy_placeholder, None, {"error": "missing_img1", **base_trace})
 
     if mode != "Single" and img2_file is None:
         arr1, meta1 = read_geotiff(img1_file.name)
@@ -19,25 +26,30 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
             {"error": "missing_img2", **base_trace},
         )
 
+    # 1) Read Image 1
     progress(0.15, desc="Ingesting Primary Raster")
     arr1, meta1 = read_geotiff(img1_file.name)
     preview1 = to_rgb_preview(arr1)
     arr2 = meta2 = preview2 = None
 
+    # 2) Read Image 2
     if img2_file is not None and mode != "Single":
         progress(0.35, desc="Ingesting Secondary Raster")
         arr2, meta2 = read_geotiff(img2_file.name)
         preview2 = to_rgb_preview(arr2)
 
+        # Enforce compatibility check for paired modes[cite: 1, 2]
         if mode in ["Change Pair", "Optical+SAR Pair"]:
             compat = check_pair_compatible(arr1, meta1, arr2, meta2)
             if not (compat["ok_shape"] and compat["ok_crs"]):
                 msg = "System Error: Co-registration failed. Images must match in dimensions and CRS."
                 return (msg, preview1, preview1, preview2, {"error": "incompatible_pair", **compat, **base_trace})
 
+    # 3) Route to agent
     progress(0.70, desc="Executing Analysis Pipeline")
     answer, evidence, exec_summary = route_query(mode, img1_file.name, arr1, meta1, arr2, meta2, query)
     
+    # 4) Resolve rendering
     progress(0.92, desc="Rendering Visual Evidence")
     if evidence is None:
         evidence = preview1
@@ -158,30 +170,45 @@ button.secondary:hover {
   color: var(--text-main) !important;
 }
 
+/* Center Stage Stabilization */
+.center-column {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  min-height: 550px;
+}
+
 /* Chat Prompt Box Area */
 .chat-container {
   background: linear-gradient(180deg, rgba(30,30,35,0.6) 0%, rgba(15,15,18,0.9) 100%) !important;
   border: 1px solid var(--panel-border) !important;
   border-radius: 16px !important;
   padding: 16px !important;
-  margin-top: -40px; /* Overlaps the visual evidence slightly */
+  width: 90%;
+  transform: translateY(-60px); /* Safely overlaps the globe */
   position: relative;
   z-index: 10;
   backdrop-filter: blur(12px);
 }
 
-/* Images */
+/* Image masking for a globe effect */
 .output-img {
-  border-radius: 50% !important; /* Forces a globe-like circular mask for center image if square */
-  border: 1px solid var(--panel-border);
-  box-shadow: var(--gold-glow);
-  background-color: #000;
+  border-radius: 50% !important; 
+  border: 1px solid var(--panel-border) !important;
+  box-shadow: var(--gold-glow) !important;
+  background-color: #050505 !important;
+  object-fit: cover !important; 
+  aspect-ratio: 1 / 1 !important; 
+  width: 450px !important;
+  height: 450px !important;
   overflow: hidden;
+  margin: 0 auto;
 }
 .side-img {
   border-radius: 12px !important;
   border: 1px solid var(--panel-border);
-  background-color: #000;
+  background-color: #050505;
 }
 
 /* Radio Buttons (Left Nav) */
@@ -220,10 +247,16 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
         # ==========================================
         # CENTER STAGE: Visual Output & Chat Prompt
         # ==========================================
-        with gr.Column(scale=5, min_width=500):
-            # Floating Globe / Main Evidence
-            with gr.Row(elem_classes=["output-img"]):
-                evidence_img = gr.Image(show_label=False, interactive=False, type="numpy", height=500, elem_classes=["output-img"])
+        with gr.Column(scale=5, min_width=500, elem_classes=["center-column"]):
+            
+            # Floating Globe initialized with a dummy array
+            evidence_img = gr.Image(
+                value=dummy_placeholder,
+                show_label=False, 
+                interactive=False, 
+                type="numpy",
+                elem_classes=["output-img"]
+            )
             
             # Glassmorphic Chat Input Area
             with gr.Group(elem_classes=["chat-container"]):
@@ -241,8 +274,9 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
         with gr.Column(scale=3, min_width=300):
             with gr.Group(elem_classes=["glass-panel"]):
                 gr.Markdown("### Recent Earth Views")
-                preview1_img = gr.Image(label="Source 1", interactive=False, type="numpy", height=150, elem_classes=["side-img"])
-                preview2_img = gr.Image(label="Source 2", interactive=False, type="numpy", height=150, elem_classes=["side-img"], visible=False)
+                # Initialize previews with dummy arrays to prevent broken icons
+                preview1_img = gr.Image(value=dummy_placeholder, label="Source 1", interactive=False, type="numpy", height=150, elem_classes=["side-img"])
+                preview2_img = gr.Image(value=dummy_placeholder, label="Source 2", interactive=False, type="numpy", height=150, elem_classes=["side-img"], visible=False)
                 
             gr.HTML("<br>")
             
@@ -270,7 +304,8 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
 
     def _reset(mode):
         ui = update_ui_for_mode(mode)
-        return (ui[0], ui[1], ui[2], None, None, None, None, None, {})
+        # Restore the dummy placeholders on reset
+        return (ui[0], ui[1], ui[2], None, None, dummy_placeholder, dummy_placeholder, None, {})
 
     reset_btn.click(
         fn=_reset,
