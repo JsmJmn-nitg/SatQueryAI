@@ -15,20 +15,18 @@ def route_query(mode, img1_file_path, arr1, meta1, arr2, meta2, query):
     exec_summary = {"mode": mode, "query": query, "tools_executed": []}
     evidence_img = None
     preview1 = to_rgb_preview(arr1)
-    
+                
     try:
         if mode == "Single":
-            print("DEBUG: Entering Single mode - calling VLM")
-            # Call the VLM API
-            answer, stats = vlm_tool.run_vqa(img1_file_path, query)
-            print(f"DEBUG: VLM returned: {answer[:100]}...")
+            # 1. Save the RGB preview as a temporary PNG file
+            temp_img_path = tempfile.mktemp(suffix=".png")
+            # Convert RGB to BGR for cv2 saving, or just use PIL
+            import cv2
+            cv2.imwrite(temp_img_path, cv2.cvtColor(preview1, cv2.COLOR_RGB2BGR))
             
-            exec_summary["tools_executed"].append({
-                "name": "VLM_API",
-                "model": "GeoChat",
-                "params": stats,
-            })
-            evidence_img = preview1
+            # 2. Send the temporary PNG to the VLM instead of the raw GeoTIFF
+            answer, stats = vlm_tool.run_vqa(temp_img_path, query)
+
             
         elif mode == "Change Pair":
             print("DEBUG: Entering Change Pair mode")
