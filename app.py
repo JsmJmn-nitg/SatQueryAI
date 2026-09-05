@@ -1,200 +1,195 @@
+# ===== ./app.py =====
 import gradio as gr
-import os
+from ui_styles import THEME, CSS
+from mock_backend import run_place_workflow, run_upload_workflow
 
-from ui_styles import THEME, CSS, HERO_HTML
-from mock_backend import run_place_workflow
-from places_tool import autocomplete_places, geocode_place
-
-
-def google_maps_embed(lat: float, lon: float, zoom: int = 12) -> str:
-    # Does not require an API key
-    src = f"https://www.google.com/maps?q={lat},{lon}&z={zoom}&output=embed"
-    return f"""
-    <div class="glass soft cardPad">
-      <div class="sectionTitle">Map</div>
-      <div style="margin-top:10px; border-radius:16px; overflow:hidden; border:1px solid rgba(148,163,184,.18);">
-        <iframe width="100%" height="320" frameborder="0" style="border:0" referrerpolicy="no-referrer-when-downgrade" src="{src}"></iframe>
-      </div>
-      <div class="smallHint" style="margin-top:10px;">
-        Autocomplete: {"Google Places API" if os.getenv("GOOGLE_MAPS_API_KEY") else "OSM Nominatim fallback"}.
-        Sentinel/Google Earth imagery fetch can be wired later.
-      </div>
+# ================= HTML TEMPLATES =================
+SIDEBAR_HTML = """
+<div class="brand">
+    <div class="brand-icon">☄️</div>
+    <div class="brand-text">
+        <h1>SatQuery AI</h1>
+        <p>Vision-Language Assistant</p>
     </div>
-    """
+</div>
+<button class="nav-btn btn-new">＋ New Query</button>
+<button class="nav-btn btn-nav active">🏠 Home</button>
+<button class="nav-btn btn-nav">⏱ History</button>
 
+<div class="sidebar-bottom">
+    <div class="status-card">
+        <div class="status-dot"></div>
+        <div>System Status<br><span style="color:var(--text-muted);font-size:10px;">All systems operational</span></div>
+    </div>
+</div>
+"""
 
-def on_place_input(text):
-    # Called on keystrokes; keep it light and only after 3 chars (handled in tool)
-    try:
-        suggestions = autocomplete_places(text, limit=5)
-        return gr.update(choices=suggestions, value=None, visible=bool(suggestions))
-    except Exception:
-        return gr.update(choices=[], value=None, visible=False)
+HEADER_HTML = """
+<div class="top-nav">
+    <div></div>
+    <div class="top-nav-right">
+        <span>❓ Help</span>
+        <span id="theme-toggle" style="cursor:pointer; font-size: 18px;">☀️</span>
+        <div class="user-avatar">U</div>
+        <span>User ⌄</span>
+    </div>
+</div>
+"""
 
+HERO_ART_HTML = """
+<div class="hero-bg">
+    <svg width="600" height="400" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" style="opacity: 0.05;">
+        <ellipse cx="400" cy="150" rx="150" ry="60" fill="none" stroke="currentColor" stroke-width="1" transform="rotate(-20 400 150)"/>
+        <ellipse cx="400" cy="150" rx="200" ry="80" fill="none" stroke="currentColor" stroke-width="1" transform="rotate(-20 400 150)"/>
+        <ellipse cx="400" cy="150" rx="250" ry="100" fill="none" stroke="currentColor" stroke-width="1" transform="rotate(-20 400 150)"/>
+    </svg>
+    <div class="planet-orb"></div>
+</div>
+"""
 
-def on_suggestion_select(choice):
-    if not choice:
-        # don't overwrite user's typing if they didn't pick
-        return "", "", ""
+# ================= APP LOGIC =================
+def handle_run(mode, query, img1, img2, place_text):
+    query = (query or "").strip() or "What are the main land cover types in this image?"
+    
+    if mode == "Autofetch":
+        answer_html, evidence, _, _, _, _, _ = run_place_workflow(
+            place=place_text or "Coastal Region", lat=0, lon=0, start_date="", end_date="", goal="Understand scene", query=query
+        )
+    else:
+        answer_html, evidence, _, _, _, _ = run_upload_workflow(
+            mode=mode, query=query, preview1=img1, preview2=img2
+        )
+        
+    return gr.update(visible=True), answer_html, evidence
 
-    lat, lon, formatted = geocode_place(choice)
-    if lat is None or lon is None:
-        return formatted, "", ""
-    return formatted, str(lat), str(lon)
+def toggle_mode(btn_name):
+    # Returns updates for the 4 mode buttons, the upload area, and autofetch area
+    modes = ["Single Image", "Optical + SAR", "Change Detection", "Autofetch"]
+    btn_updates = [gr.update(elem_classes=["mode-btn", "selected"] if m == btn_name else ["mode-btn"]) for m in modes]
+    
+    show_upload = btn_name in ["Single Image", "Optical + SAR", "Change Detection"]
+    show_second_upload = btn_name in ["Optical + SAR", "Change Detection"]
+    show_autofetch = btn_name == "Autofetch"
+    
+    area_updates = [
+        gr.update(visible=show_upload),         # upload_area group
+        gr.update(visible=show_second_upload),  # img_upload_2
+        gr.update(visible=show_autofetch)       # autofetch_area
+    ]
+    return btn_updates + area_updates
 
+# ================= UI LAYOUT =================
+with gr.Blocks(theme=THEME, css=CSS, title="SatQuery AI") as demo:
+    with gr.Row(elem_id="app-container"):
+        
+        # --- LEFT SIDEBAR ---
+        with gr.Column(elem_id="sidebar-col"):
+            gr.HTML(SIDEBAR_HTML)
+            
+            # Use Gradio's native theme component inside sidebar for easy toggling
+            # Placed invisibly to let custom JS/HTML handle the look if desired, or just use native.
+            gr.ThemeMode(elem_classes=["hidden"])
+        
+        # --- MAIN CONTENT ---
+        with gr.Column(elem_id="main-col"):
+            gr.HTML(HEADER_HTML)
+            gr.HTML(HERO_ART_HTML)
+            
+            with gr.Column(elem_classes=["content-wrapper"]):
+                
+                # Header Texts
+                gr.HTML("""
+                    <div class="greeting">Good morning! 👋 <span>Ask anything about your remote sensing imagery.</span></div>
+                """)
+                
+                # Chat Input Box
+                with gr.Group(elem_classes=["search-box"]):
+                    with gr.Row():
+                        query_input = gr.Textbox(
+                            placeholder='Try: "What are the main land cover types in this image?"', 
+                            show_label=False, lines=1, max_lines=3, scale=1
+                        )
+                        submit_btn = gr.Button("↗", elem_classes=["send-btn-wrap"])
+                
+                # Mode Selectors
+                with gr.Row(elem_classes=["mode-tabs"]):
+                    m_single = gr.Button("🖼 Single Image", elem_classes=["mode-btn"])
+                    m_fusion = gr.Button("🎯 Optical + SAR", elem_classes=["mode-btn"])
+                    m_change = gr.Button("⚡ Change Detection", elem_classes=["mode-btn"])
+                    m_auto   = gr.Button("✨ Autofetch", elem_classes=["mode-btn", "selected"])
+                
+                # Dynamic Input Area
+                with gr.Group(elem_classes=["dynamic-area"]):
+                    # Upload Area State
+                    with gr.Row(visible=False, elem_classes=["upload-grid"]) as upload_area:
+                        with gr.Column(elem_classes=["upload-box"]):
+                            img_upload_1 = gr.Image(type="numpy", label="Upload Primary Image", elem_id="img1")
+                        with gr.Column(elem_classes=["upload-box"], visible=False) as upload_area_2:
+                            img_upload_2 = gr.Image(type="numpy", label="Upload Secondary Image (SAR/Post)", elem_id="img2")
+                    
+                    # Autofetch Area State
+                    with gr.Row(visible=True, elem_classes=["autofetch-ui"]) as autofetch_area:
+                        with gr.Column():
+                            gr.HTML("<h3>✨ Autofetch Mode</h3><p>Describe your area of interest, and we'll automatically fetch the best available satellite data and provide insights.</p>")
+                            place_input = gr.Textbox(placeholder="E.g., Coastal Region, San Francisco", show_label=False, container=False)
+                            
+                # Selected mode state tracking
+                current_mode = gr.State("Autofetch")
 
-def on_run(place_text, lat_text, lon_text, start_date, end_date, goal, query):
-    # If user didn't resolve lat/lon, geocode from place_text (best effort)
-    place_text = (place_text or "").strip()
-    query = (query or "").strip() or "Summarize what is happening in this area."
-
-    # Normalize dates to strings (gr.DateTime may pass ISO-like strings)
-    start_date = str(start_date) if start_date else "2024-01-01"
-    end_date = str(end_date) if end_date else "2024-12-31"
-
-    lat = None
-    lon = None
-
-    try:
-        if lat_text and lon_text:
-            lat = float(lat_text)
-            lon = float(lon_text)
-    except Exception:
-        lat = lon = None
-
-    if (lat is None or lon is None) and place_text:
-        glat, glon, formatted = geocode_place(place_text)
-        if glat is not None and glon is not None:
-            lat, lon = glat, glon
-            place_text = formatted
-
-    # demo default if still missing
-    if lat is None or lon is None:
-        lat, lon = 28.6139, 77.2090
-        if not place_text:
-            place_text = "New Delhi (demo default)"
-
-    answer_md, evidence, optical, sar, _map_html_unused, exec_summary, report_path = run_place_workflow(
-        place=place_text,
-        lat=lat,
-        lon=lon,
-        start_date=start_date,
-        end_date=end_date,
-        goal=goal,
-        query=query,
-    )
-    map_html = google_maps_embed(lat, lon, zoom=12)
-    return answer_md, evidence, optical, sar, map_html, exec_summary, report_path
-
-
-with gr.Blocks(theme=THEME, css=CSS, title="SatQuery AI", elem_id="app") as demo:
-    gr.HTML(HERO_HTML)
-
-    with gr.Row():
-        # Left: minimal inputs
-        with gr.Column(scale=5, min_width=360, elem_classes=["glass", "cardPad"]):
-            gr.Markdown('<div class="sectionTitle">Describe your question</div>')
-
-            place_text = gr.Textbox(
-                label="Location",
-                placeholder="Start typing a place (e.g., 'Chilika Lake', 'Dehradun', 'Guwahati')",
-            )
-            place_suggestions = gr.Dropdown(
-                label="Suggestions",
-                choices=[],
-                visible=False,
-                interactive=True,
-                allow_custom_value=False,
-            )
-
-            with gr.Row():
-                start_date = gr.DateTime(label="From", value="2024-01-01")
-                end_date = gr.DateTime(label="To", value="2024-12-31")
-
-            goal = gr.Dropdown(
-                label="Goal",
-                choices=["Understand scene", "Detect change", "Water / flooding", "Wildfire", "Urban growth", "Custom"],
-                value="Understand scene",
-            )
-
-            query = gr.Textbox(
-                label="Question (plain language)",
-                lines=3,
-                value="What is happening in this area? Summarize land cover and any notable activity.",
-            )
-
-            with gr.Accordion("Advanced (optional)", open=False):
-                gr.Markdown("<div class='smallHint'>These are auto-filled when you pick a suggestion.</div>")
-                with gr.Row():
-                    lat_text = gr.Textbox(label="Latitude", placeholder="auto", interactive=True)
-                    lon_text = gr.Textbox(label="Longitude", placeholder="auto", interactive=True)
-
-            with gr.Row():
-                run_btn = gr.Button("Run", variant="primary")
-                reset_btn = gr.Button("Reset", variant="secondary")
-
-            gr.Markdown(
-                "<div class='smallHint'>This is a UI-first demo for judging. Backends (SentinelHub/Google Earth, specialist models) can be plugged in later.</div>"
-            )
-
-        # Right: outputs
-        with gr.Column(scale=7, min_width=460):
-            with gr.Group(elem_classes=["glass", "cardPad"]):
-                gr.Markdown('<div class="sectionTitle">Answer</div>')
-                answer = gr.Markdown(elem_classes=["tightMd"])
-
-            with gr.Row():
-                with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
-                    gr.Markdown('<div class="sectionTitle">Evidence</div>')
-                    evidence = gr.Image(type="numpy", height=280, show_label=False)
-
-                with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
-                    gr.Markdown('<div class="sectionTitle">Optical</div>')
-                    optical = gr.Image(type="numpy", height=280, show_label=False)
-
-            with gr.Row():
-                with gr.Column(elem_classes=["glass", "cardPad", "imageFrame"]):
-                    gr.Markdown('<div class="sectionTitle">SAR</div>')
-                    sar = gr.Image(type="numpy", height=260, show_label=False)
-                with gr.Column():
-                    map_html = gr.HTML()
-
-            with gr.Accordion("Execution Trace + Report", open=False, elem_classes=["glass", "cardPad"]):
-                trace = gr.JSON(show_label=False)
-                report = gr.File(label="Download report", interactive=False)
+                # Results Area (Hidden until run)
+                with gr.Group(visible=False, elem_classes=["results-card"]) as results_area:
+                    gr.HTML("<div class='answer-badge'>💬 Answer</div>")
+                    
+                    with gr.Row(elem_classes=["results-grid"]):
+                        # Left Text Analysis
+                        with gr.Column(elem_classes=["result-text-area"]):
+                            answer_html = gr.HTML()
+                            gr.HTML("""
+                                <div class="confidence">
+                                    Confidence Score <span class="conf-score">0.88</span>
+                                </div>
+                            """)
+                            
+                        # Right Image Analysis
+                        with gr.Column(elem_classes=["result-image-area"]):
+                            result_img = gr.Image(show_label=False, interactive=False)
+                            gr.HTML("""
+                                <div class="image-controls">
+                                    <div class="img-btn">🔍</div><div class="img-btn">➕</div><div class="img-btn">🔲</div>
+                                </div>
+                                <div class="legend-box">
+                                    <h5>Detected Objects</h5>
+                                    <div class="legend-item"><div class="legend-color ic-red"></div> Built-up Area</div>
+                                    <div class="legend-item"><div class="legend-color ic-blue"></div> Water Body</div>
+                                    <div class="legend-item"><div class="legend-color ic-green"></div> Vegetation</div>
+                                    <div class="legend-item"><div class="legend-color ic-yellow"></div> Roads</div>
+                                    <div class="legend-item"><div class="legend-color ic-purple"></div> Bare Land</div>
+                                </div>
+                            """)
 
     # Events
-    place_text.input(fn=on_place_input, inputs=[place_text], outputs=[place_suggestions])
-    place_suggestions.change(fn=on_suggestion_select, inputs=[place_suggestions], outputs=[place_text, lat_text, lon_text])
+    mode_btns = [m_single, m_fusion, m_change, m_auto]
+    
+    m_single.click(lambda: "Single Image", None, current_mode).then(toggle_mode, inputs=[gr.State("Single Image")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
+    m_fusion.click(lambda: "Optical + SAR", None, current_mode).then(toggle_mode, inputs=[gr.State("Optical + SAR")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
+    m_change.click(lambda: "Change Detection", None, current_mode).then(toggle_mode, inputs=[gr.State("Change Detection")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
+    m_auto.click(lambda: "Autofetch", None, current_mode).then(toggle_mode, inputs=[gr.State("Autofetch")], outputs=mode_btns + [upload_area, upload_area_2, autofetch_area])
 
-    run_btn.click(
-        fn=on_run,
-        inputs=[place_text, lat_text, lon_text, start_date, end_date, goal, query],
-        outputs=[answer, evidence, optical, sar, map_html, trace, report],
+    submit_btn.click(
+        fn=handle_run,
+        inputs=[current_mode, query_input, img_upload_1, img_upload_2, place_input],
+        outputs=[results_area, answer_html, result_img]
     )
 
-    def _reset():
-        return (
-            "", gr.update(choices=[], visible=False, value=None),
-            "2024-01-01", "2024-12-31",
-            "Understand scene",
-            "What is happening in this area? Summarize land cover and any notable activity.",
-            "", "",
-            "", None, None, None, "", {}, None
-        )
-
-    reset_btn.click(
-        fn=_reset,
-        inputs=[],
-        outputs=[
-            place_text, place_suggestions,
-            start_date, end_date,
-            goal,
-            query,
-            lat_text, lon_text,
-            answer, evidence, optical, sar, map_html, trace, report
-        ],
-    )
+    # Optional UI script to sync the sun/moon icon with Gradio's internal theme state
+    demo.load(None, None, None, js="""
+        () => {
+            const toggle = document.getElementById('theme-toggle');
+            toggle.addEventListener('click', () => {
+                document.querySelector('.gradio-container').classList.toggle('dark');
+            });
+        }
+    """)
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    demo.launch()
