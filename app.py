@@ -1,72 +1,123 @@
 import gradio as gr
+from gradio_client import Client, handle_file
 from io_utils import read_geotiff, to_rgb_preview, check_pair_compatible
 from controller import route_query
 
-
 def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_tqdm=False)):
+    import traceback
+    
     # Standardized trace shape (always return something)
     base_trace = {"mode": mode, "query": query, "tools_used": []}
 
-    # 0) Validate inputs (functional-first)
-    if img1_file is None:
-        return (
-            "Error: Please upload Image 1.",
-            None,
-            None,
-            None,
-            {"error": "missing_img1", **base_trace},
-        )
+    try:
+        print("\n" + "="*50)
+        print("DEBUG: Starting run_satquery")
+        print(f"Mode: {mode}")
+        print(f"Query: {query}")
+        print(f"img1_file: {img1_file}")
+        print(f"img2_file: {img2_file}")
+        print("="*50 + "\n")
 
-    if mode != "Single" and img2_file is None:
-        # Still show preview1 so the UI doesn't feel broken
+        # 0) Validate inputs
+        if img1_file is None:
+            print("ERROR: img1_file is None")
+            return (
+                "Error: Please upload Image 1.",
+                None, None, None,
+                {"error": "missing_img1", **base_trace},
+            )
+
+        if mode != "Single" and img2_file is None:
+            print("ERROR: img2_file is None but mode requires it")
+            arr1, meta1 = read_geotiff(img1_file.name)
+            preview1 = to_rgb_preview(arr1)
+            return (
+                "Error: Please upload Image 2 for this mode.",
+                preview1, preview1, None,
+                {"error": "missing_img2", **base_trace},
+            )
+
+        # 1) Read Image 1
+        progress(0.15, desc="Reading Image 1")
+        print(f"DEBUG: Reading Image 1 from {img1_file.name}")
         arr1, meta1 = read_geotiff(img1_file.name)
+        print(f"DEBUG: Image 1 shape: {arr1.shape}, dtype: {arr1.dtype}")
+        print(f"DEBUG: Image 1 meta: {meta1}")
+        
         preview1 = to_rgb_preview(arr1)
-        return (
-            "Error: Please upload Image 2 for this mode.",
-            preview1,
-            preview1,
-            None,
-            {"error": "missing_img2", **base_trace},
+        print(f"DEBUG: Preview 1 shape: {preview1.shape}")
+
+        arr2 = meta2 = preview2 = None
+
+        # 2) Read Image 2 (if applicable)
+        if img2_file is not None and mode != "Single":
+            progress(0.35, desc="Reading Image 2")
+            print(f"DEBUG: Reading Image 2 from {img2_file.name}")
+            arr2, meta2 = read_geotiff(img2_file.name)
+            print(f"DEBUG: Image 2 shape: {arr2.shape}, dtype: {arr2.dtype}")
+            
+            preview2 = to_rgb_preview(arr2)
+
+            # Enforce compatibility check for paired modes
+            if mode in ["Change Pair", "Optical+SAR Pair"]:
+                print("DEBUG: Checking pair compatibility")
+                compat = check_pair_compatible(arr1, meta1, arr2, meta2)
+                print(f"DEBUG: Compatibility result: {compat}")
+                
+                if not (compat["ok_shape"] and compat["ok_crs"]):
+                    msg = "Error: Images must match in dimensions and CRS for paired analysis."
+                    return (
+                        msg,
+                        preview1,
+                        preview1,
+                        preview2,
+                        {"error": "incompatible_pair", **compat, **base_trace},
+                    )
+
+        # 3) Route to controller
+        progress(0.70, desc="Running agent pipeline")
+        print(f"DEBUG: Calling route_query with mode={mode}")
+        print(f"DEBUG: Image path: {img1_file.name}")
+        
+        answer, evidence, exec_summary = route_query(
+            mode, img1_file.name, arr1, meta1, arr2, meta2, query
         )
+        
+        print(f"DEBUG: route_query returned successfully")
+        print(f"DEBUG: Answer length: {len(answer) if answer else 0}")
+        print(f"DEBUG: Evidence shape: {evidence.shape if evidence is not None else None}")
+        print(f"DEBUG: Exec summary: {exec_summary}")
+        
+        # 4) Fallback evidence
+        progress(0.92, desc="Rendering outputs")
+        if evidence is None:
+            print("DEBUG: Evidence is None, using preview1")
+            evidence = preview1
 
-    # 1) Read Image 1
-    progress(0.15, desc="Reading Image 1")
-    arr1, meta1 = read_geotiff(img1_file.name)
-    preview1 = to_rgb_preview(arr1)
-
-    arr2 = meta2 = preview2 = None
-
-    # 2) Read Image 2 (if applicable)
-    if img2_file is not None and mode != "Single":
-        progress(0.35, desc="Reading Image 2")
-        arr2, meta2 = read_geotiff(img2_file.name)
-        preview2 = to_rgb_preview(arr2)
-
-        # Enforce compatibility check for paired modes
-        if mode in ["Change Pair", "Optical+SAR Pair"]:
-            compat = check_pair_compatible(arr1, meta1, arr2, meta2)
-            if not (compat["ok_shape"] and compat["ok_crs"]):
-                msg = "Error: Images must match in dimensions and CRS for paired analysis."
-                return (
-                    msg,
-                    preview1,   # show something in Evidence
-                    preview1,
-                    preview2,
-                    {"error": "incompatible_pair", **compat, **base_trace},
-                )
-
-    # 3) Route to controller
-    progress(0.70, desc="Running agent pipeline")
-    answer, evidence, exec_summary = route_query(mode, img1_file.name, arr1, meta1, arr2, meta2, query)
-    
-    # 4) Fallback evidence
-    progress(0.92, desc="Rendering outputs")
-    if evidence is None:
-        evidence = preview1
-
-    return answer, evidence, preview1, preview2, exec_summary
-
-
+        print("DEBUG: run_satquery completed successfully\n")
+        return answer, evidence, preview1, preview2, exec_summary
+        
+    except Exception as e:
+        print("\n" + "!"*50)
+        print("CRITICAL ERROR in run_satquery:")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        print("\nFull traceback:")
+        traceback.print_exc()
+        print("!"*50 + "\n")
+        
+        error_msg = (
+            f"❌ **Error in processing:**\n\n"
+            f"```\n{type(e).__name__}: {str(e)}\n```\n\n"
+            f"Check the Colab console for full traceback."
+        )
+        
+        return (
+            error_msg,
+            None, None, None,
+            {"error": str(e), "type": type(e).__name__, **base_trace}
+        )        
+        
 def update_ui_for_mode(mode):
     """Dynamically updates the UI based on the selected mode."""
     if mode == "Single":

@@ -2,46 +2,62 @@ import os
 from gradio_client import Client, handle_file
 
 def run_vqa(image_path, query):
+    import traceback
+    
     try:
-        print(f"Connecting to GeoChat...")
+        print("\n" + "-"*50)
+        print("DEBUG: Inside run_vqa")
+        print(f"Image path: {image_path}")
+        print(f"Query: {query}")
+        print("-"*50)
+        
+        print("DEBUG: Creating GradioClient...")
         client = Client("Bireswar26/GeoChat")
-
-        # System prompt for better context
+        print("DEBUG: Client created successfully")
+        
         full_query = (
-            "You are an expert Remote Sensing Analyst with specialization in satellite imagery interpretation. "
-            "Analyze the provided imagery with focus on:\n"
-            "- Land cover classification (vegetation, water bodies, urban fabric, bare soil)\n"
-            "- Infrastructure and built environment\n"
-            "- Environmental indicators (cloud cover, shadows, seasonal effects)\n"
-            "- Spatial patterns and geometric features\n\n"
-            "Use precise geospatial terminology. Be concise but thorough."
+            f"You are a remote sensing expert. {query} "
+            f"Focus on land cover, infrastructure, water, vegetation, and urban features."
         )
-
+        print(f"DEBUG: Full query: {full_query[:100]}...")
+        
+        print(f"DEBUG: Calling client.predict...")
+        print(f"DEBUG: - image path: {image_path}")
+        print(f"DEBUG: - checking if file exists: {os.path.exists(image_path)}")
+        
         result = client.predict(
             image=handle_file(image_path),
             prompt=full_query,
             max_new_tokens=256,
             api_name="/geochat"
         )
-
+        
+        print(f"DEBUG: Prediction successful!")
+        print(f"DEBUG: Result type: {type(result)}")
+        print(f"DEBUG: Result: {result[:200] if isinstance(result, str) else result}")
+        print("-"*50 + "\n")
+        
         return result, {
             "vlm_model": "GeoChat",
             "status": "Success",
             "system_prompt_used": True
         }
-
+        
     except Exception as e:
-        print(f"GeoChat Error: {e}")
-
+        print("\n" + "!"*50)
+        print("ERROR in run_vqa:")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        print("\nFull traceback:")
+        traceback.print_exc()
+        print("!"*50 + "\n")
+        
         fallback = (
-            f"**[GeoChat API Failed - Using Fallback]**\n\n"
-            f"Query: {query}\n\n"
-            f"Mock Analysis: Scene shows mixed land cover with vegetation, "
-            f"potential urban structures, and varied surface types typical of "
-            f"satellite imagery. Water bodies may be present in low-reflectance regions.\n\n"
-            f"*Error: {str(e)}*"
+            f"**[GeoChat API Failed]**\n\n"
+            f"Error: {type(e).__name__}: {str(e)}\n\n"
+            f"Mock Analysis: Scene shows mixed land cover typical of satellite imagery.\n"
         )
-
+        
         return fallback, {
             "vlm_model": "Fallback",
             "status": f"Error: {str(e)}"
