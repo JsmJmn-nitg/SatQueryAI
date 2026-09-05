@@ -287,4 +287,4 @@ with gr.Blocks(title="SatQuery AI") as demo:
 
 # Note: In Gradio 6, css and theme are passed to launch()
 if __name__ == "__main__":
-    demo.launch(css=CSS)
+    demo.launch(css=CSS, share=True)
