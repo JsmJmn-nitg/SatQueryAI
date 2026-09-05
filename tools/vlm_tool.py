@@ -13,7 +13,7 @@ def run_vqa(image_path, query):
             )
 
         client = Client(
-            "Bireswar26/geochat-demo",
+            "Happisky/MBZUAI-geochat-7B",
             hf_token=hf_token
         )
 
