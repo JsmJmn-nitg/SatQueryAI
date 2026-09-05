@@ -5,7 +5,6 @@ from mock_backend import run_place_workflow, run_upload_workflow
 import base64
 from io import BytesIO
 from PIL import Image
-from pyngrok import ngrok
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -42,6 +41,6 @@ def handle_query():
     return jsonify({'success': True, 'answer': ans_html, 'image': array_to_base64(evidence), 'trace': exec_s, 'confidence': 0.88})
 
 if __name__ == '__main__':
-    public_url = ngrok.connect(5000)
-    print(f" SatQuery AI is live at: {public_url}")
-    app.run(port=5000)
+    from google.colab import output
+    output.serve_kernel_port_as_window(5000)
+    app.run(host='0.0.0.0', port=5000)
