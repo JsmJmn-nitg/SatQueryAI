@@ -124,9 +124,10 @@ def smartish_answer(query: str, mode: str, place: str | None = None) -> str:
          
     title = "Coastal Land-Cover Overview" if place == "Coastal Region" else f"{mode} Analysis"
     
+    # Returns raw HTML formatted for the CSS we wrote in app.py
     return f"""
-    <h3 style="margin-top:0;">{title}</h3>
-    <p style="color:#9CA3AF; font-size:14px; line-height:1.5;">{intro_text}</p>
+    <h3 style="color: white; margin-top: 0; font-size: 18px;">{title}</h3>
+    <p style="color: #9ca3af; font-size: 14px; line-height: 1.5;">{intro_text}</p>
     
     <ul class="icon-list">
         <li class="icon-list-item">
@@ -166,7 +167,7 @@ def smartish_answer(query: str, mode: str, place: str | None = None) -> str:
         </li>
     </ul>
     """
-    
+        
 def run_place_workflow(place: str, lat: float, lon: float, start_date: str, end_date: str, goal: str, query: str):
     planned = []
     if goal in ["Understand scene", "Custom"]:
