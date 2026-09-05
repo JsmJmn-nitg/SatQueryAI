@@ -1,4 +1,5 @@
-#build the satellite 
+
+#build the satellite reader
 def read_satellite_image(path):
 
     with rasterio.open(path) as src:
