@@ -1,0 +1,5 @@
+find . -type f -name "*.py" -not -path "./.git/*" | sort | while read -r f; do
+    echo "===== $f =====" >> temp.txt
+    cat "$f" >> temp.txt
+    printf "\n\n" >> temp.txt
+done
