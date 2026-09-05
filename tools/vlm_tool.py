@@ -4,8 +4,6 @@ import os
 def run_vqa(image_path, query):
     try:
         # Connect to a public Hugging Face Space running a VLM
-        # (Replace with an actual GeoChat/RS-LLaVA space URL if you find one, 
-        # or use a powerful generic open-source VLM like LLaVA as a fallback)
         client = Client("lmms-lab/llava-onevision") 
         
         # Send the image and text to the API
@@ -16,4 +14,4 @@ def run_vqa(image_path, query):
         )
         return result, {"vlm_model": "API_Hosted_VLM", "status": "Success"}
     except Exception as e:
-        return f"VLM Error: {str(e)}", {"status": "Failed"}
+        return f"System Integrity Exception (VLM Failed): {str(e)}", {"status": "Failed", "error": str(e)}
