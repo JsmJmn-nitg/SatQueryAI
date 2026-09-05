@@ -3,15 +3,14 @@ import numpy as np
 from io_utils import read_geotiff, to_rgb_preview, check_pair_compatible
 from controller import route_query
 
-# Create a dark space-gray placeholder to prevent broken image icons on load[cite: 1]
+# Create a visible space-gray placeholder to prevent broken image icons on load[cite: 1]
 dummy_placeholder = np.zeros((450, 450, 3), dtype=np.uint8)
-dummy_placeholder[:] = (10, 10, 15) 
+# Lighter dark-blue to make the "globe" visible before image upload
+dummy_placeholder[:] = (20, 25, 35) 
 
 def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_tqdm=False)):
-    # Standardized trace shape[cite: 1]
     base_trace = {"mode": mode, "query": query, "tools_used": []}
 
-    # 0) Validate inputs[cite: 1]
     if img1_file is None:
         return ("System Error: Primary acquisition missing.", dummy_placeholder, dummy_placeholder, None, {"error": "missing_img1", **base_trace})
 
@@ -26,30 +25,25 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
             {"error": "missing_img2", **base_trace},
         )
 
-    # 1) Read Image 1
     progress(0.15, desc="Ingesting Primary Raster")
     arr1, meta1 = read_geotiff(img1_file.name)
     preview1 = to_rgb_preview(arr1)
     arr2 = meta2 = preview2 = None
 
-    # 2) Read Image 2
     if img2_file is not None and mode != "Single":
         progress(0.35, desc="Ingesting Secondary Raster")
         arr2, meta2 = read_geotiff(img2_file.name)
         preview2 = to_rgb_preview(arr2)
 
-        # Enforce compatibility check for paired modes[cite: 1, 2]
         if mode in ["Change Pair", "Optical+SAR Pair"]:
             compat = check_pair_compatible(arr1, meta1, arr2, meta2)
             if not (compat["ok_shape"] and compat["ok_crs"]):
                 msg = "System Error: Co-registration failed. Images must match in dimensions and CRS."
                 return (msg, preview1, preview1, preview2, {"error": "incompatible_pair", **compat, **base_trace})
 
-    # 3) Route to agent[cite: 1]
     progress(0.70, desc="Executing Analysis Pipeline")
     answer, evidence, exec_summary = route_query(mode, img1_file.name, arr1, meta1, arr2, meta2, query)
     
-    # 4) Resolve rendering[cite: 1]
     progress(0.92, desc="Rendering Visual Evidence")
     if evidence is None:
         evidence = preview1
@@ -176,23 +170,23 @@ button.secondary:hover {
   flex-direction: column !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  min-height: 550px !important;
-  padding-top: 10px !important;
+  min-height: 580px !important;
+  position: relative;
 }
 
 /* Chat Prompt Box Area */
 .chat-container {
-  background: linear-gradient(180deg, rgba(30,30,35,0.85) 0%, rgba(15,15,18,0.95) 100%) !important;
+  background: linear-gradient(180deg, rgba(30,30,35,0.8) 0%, rgba(15,15,18,0.95) 100%) !important;
   border: 1px solid var(--panel-border) !important;
   border-radius: 16px !important;
   padding: 16px !important;
   width: 90% !important;
-  max-width: 550px !important;
+  max-width: 600px !important;
   transform: translateY(-60px) !important; /* Safely overlaps the globe */
-  position: relative;
-  z-index: 10;
-  backdrop-filter: blur(12px);
-  box-shadow: 0px 10px 30px rgba(0,0,0,0.5) !important;
+  position: relative !important;
+  z-index: 10 !important;
+  backdrop-filter: blur(12px) !important;
+  box-shadow: 0px 10px 30px rgba(0,0,0,0.6) !important;
 }
 
 /* Image masking for a globe effect */
@@ -200,28 +194,25 @@ button.secondary:hover {
   border-radius: 50% !important; 
   border: 1px solid var(--panel-border) !important;
   box-shadow: var(--gold-glow) !important;
-  background: radial-gradient(circle at 30% 30%, #1a1a24 0%, #050505 80%) !important;
+  background: radial-gradient(circle at 30% 30%, #2a2a35 0%, #050505 80%) !important;
   width: 450px !important;
   height: 450px !important;
   max-width: 450px !important;
   max-height: 450px !important;
-  overflow: hidden !important;
   margin: 0 auto !important;
-  aspect-ratio: 1 / 1 !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
+  overflow: hidden !important;
 }
 
-/* Target internal Gradio elements to ensure circular mask holds */
+/* Target internal Gradio elements to enforce the circular mask */
 .output-img > div, .output-img img {
   border-radius: 50% !important;
   object-fit: cover !important;
   width: 100% !important;
   height: 100% !important;
+  aspect-ratio: 1 / 1 !important;
 }
 
-/* Hide download/fullscreen buttons on the globe to keep it clean */
+/* Hide download buttons on the globe to keep it clean */
 .output-img button {
   display: none !important;
 }
@@ -230,7 +221,6 @@ button.secondary:hover {
   border-radius: 12px !important;
   border: 1px solid var(--panel-border) !important;
   background-color: #050505 !important;
-  overflow: hidden !important;
 }
 .side-img img {
   object-fit: cover !important;
@@ -274,7 +264,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
         # ==========================================
         with gr.Column(scale=5, min_width=500, elem_classes=["center-column"]):
             
-            # Floating Globe initialized with a dummy array[cite: 1]
+            # Floating Globe initialized with a dummy array
             evidence_img = gr.Image(
                 value=dummy_placeholder,
                 show_label=False, 
@@ -314,7 +304,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
             with gr.Accordion("Telemetry Network", open=False, elem_classes=["glass-panel"]):
                 exec_summary = gr.JSON(show_label=False)
 
-    # --- Event Binding[cite: 1]
+    # --- Event Binding
     mode_dropdown.change(
         fn=update_ui_for_mode,
         inputs=[mode_dropdown],
@@ -329,7 +319,6 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
 
     def _reset(mode):
         ui = update_ui_for_mode(mode)
-        # Restore the dummy placeholders on reset
         return (ui[0], ui[1], ui[2], None, None, dummy_placeholder, dummy_placeholder, None, {})
 
     reset_btn.click(
