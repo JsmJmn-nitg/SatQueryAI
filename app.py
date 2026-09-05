@@ -57,8 +57,8 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
 
     # 3) Route to controller
     progress(0.70, desc="Running agent pipeline")
-    answer, evidence, exec_summary = route_query(mode, arr1, meta1, arr2, meta2, query)
-
+    answer, evidence, exec_summary = route_query(mode, img1_file.name, arr1, meta1, arr2, meta2, query)
+    
     # 4) Fallback evidence
     progress(0.92, desc="Rendering outputs")
     if evidence is None:
