@@ -5,3 +5,11 @@ pillow
 numpy
 matplotlib
 huggingface_hub
+scipy
+scikit-image
+torch
+torchvision
+transformers
+accelerate
+safetensors
+gradio-client
