@@ -13,7 +13,7 @@ def run_vqa(image_path, query):
             )
 
         client = Client(
-            "lmms-lab/LLaVA-OneVision-1.5",
+            "Bireswar26/geochat-demo",
             hf_token=hf_token
         )
 
