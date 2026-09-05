@@ -3,15 +3,15 @@ import numpy as np
 from io_utils import read_geotiff, to_rgb_preview, check_pair_compatible
 from controller import route_query
 
-# Create a dark space-gray placeholder to prevent broken image icons on load
+# Create a dark space-gray placeholder to prevent broken image icons on load[cite: 1]
 dummy_placeholder = np.zeros((450, 450, 3), dtype=np.uint8)
 dummy_placeholder[:] = (10, 10, 15) 
 
 def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_tqdm=False)):
-    # Standardized trace shape[cite: 1, 2]
+    # Standardized trace shape[cite: 1]
     base_trace = {"mode": mode, "query": query, "tools_used": []}
 
-    # 0) Validate inputs[cite: 1, 2]
+    # 0) Validate inputs[cite: 1]
     if img1_file is None:
         return ("System Error: Primary acquisition missing.", dummy_placeholder, dummy_placeholder, None, {"error": "missing_img1", **base_trace})
 
@@ -45,11 +45,11 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
                 msg = "System Error: Co-registration failed. Images must match in dimensions and CRS."
                 return (msg, preview1, preview1, preview2, {"error": "incompatible_pair", **compat, **base_trace})
 
-    # 3) Route to agent
+    # 3) Route to agent[cite: 1]
     progress(0.70, desc="Executing Analysis Pipeline")
     answer, evidence, exec_summary = route_query(mode, img1_file.name, arr1, meta1, arr2, meta2, query)
     
-    # 4) Resolve rendering
+    # 4) Resolve rendering[cite: 1]
     progress(0.92, desc="Rendering Visual Evidence")
     if evidence is None:
         evidence = preview1
@@ -176,20 +176,23 @@ button.secondary:hover {
   flex-direction: column !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  min-height: 550px;
+  min-height: 550px !important;
+  padding-top: 10px !important;
 }
 
 /* Chat Prompt Box Area */
 .chat-container {
-  background: linear-gradient(180deg, rgba(30,30,35,0.6) 0%, rgba(15,15,18,0.9) 100%) !important;
+  background: linear-gradient(180deg, rgba(30,30,35,0.85) 0%, rgba(15,15,18,0.95) 100%) !important;
   border: 1px solid var(--panel-border) !important;
   border-radius: 16px !important;
   padding: 16px !important;
-  width: 90%;
-  transform: translateY(-60px); /* Safely overlaps the globe */
+  width: 90% !important;
+  max-width: 550px !important;
+  transform: translateY(-60px) !important; /* Safely overlaps the globe */
   position: relative;
   z-index: 10;
   backdrop-filter: blur(12px);
+  box-shadow: 0px 10px 30px rgba(0,0,0,0.5) !important;
 }
 
 /* Image masking for a globe effect */
@@ -197,18 +200,40 @@ button.secondary:hover {
   border-radius: 50% !important; 
   border: 1px solid var(--panel-border) !important;
   box-shadow: var(--gold-glow) !important;
-  background-color: #050505 !important;
-  object-fit: cover !important; 
-  aspect-ratio: 1 / 1 !important; 
+  background: radial-gradient(circle at 30% 30%, #1a1a24 0%, #050505 80%) !important;
   width: 450px !important;
   height: 450px !important;
-  overflow: hidden;
-  margin: 0 auto;
+  max-width: 450px !important;
+  max-height: 450px !important;
+  overflow: hidden !important;
+  margin: 0 auto !important;
+  aspect-ratio: 1 / 1 !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
 }
+
+/* Target internal Gradio elements to ensure circular mask holds */
+.output-img > div, .output-img img {
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Hide download/fullscreen buttons on the globe to keep it clean */
+.output-img button {
+  display: none !important;
+}
+
 .side-img {
   border-radius: 12px !important;
-  border: 1px solid var(--panel-border);
-  background-color: #050505;
+  border: 1px solid var(--panel-border) !important;
+  background-color: #050505 !important;
+  overflow: hidden !important;
+}
+.side-img img {
+  object-fit: cover !important;
 }
 
 /* Radio Buttons (Left Nav) */
@@ -249,7 +274,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
         # ==========================================
         with gr.Column(scale=5, min_width=500, elem_classes=["center-column"]):
             
-            # Floating Globe initialized with a dummy array
+            # Floating Globe initialized with a dummy array[cite: 1]
             evidence_img = gr.Image(
                 value=dummy_placeholder,
                 show_label=False, 
@@ -289,7 +314,7 @@ with gr.Blocks(theme=theme, css=css, title="SatQuery Dashboard", elem_id="dashbo
             with gr.Accordion("Telemetry Network", open=False, elem_classes=["glass-panel"]):
                 exec_summary = gr.JSON(show_label=False)
 
-    # --- Event Binding
+    # --- Event Binding[cite: 1]
     mode_dropdown.change(
         fn=update_ui_for_mode,
         inputs=[mode_dropdown],
