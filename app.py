@@ -188,4 +188,4 @@ with gr.Blocks(theme=THEME, css=CSS, title="SatQuery AI") as demo:
     """)
 
 if __name__ == "__main__":
-    demo.launch(theme=THEME, css=CSS)
+    demo.launch(theme=THEME, css=CSS, share=True)
