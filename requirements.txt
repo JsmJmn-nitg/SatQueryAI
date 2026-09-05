@@ -16,3 +16,4 @@ gradio-client
 einops
 requests
 flask
+pyngrok
