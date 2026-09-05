@@ -85,11 +85,7 @@ with gr.Blocks(theme=THEME, css=CSS, title="SatQuery AI") as demo:
         # --- LEFT SIDEBAR ---
         with gr.Column(elem_id="sidebar-col"):
             gr.HTML(SIDEBAR_HTML)
-            
-            # Use Gradio's native theme component inside sidebar for easy toggling
-            # Placed invisibly to let custom JS/HTML handle the look if desired, or just use native.
-            gr.ThemeMode(elem_classes=["hidden"])
-        
+                    
         # --- MAIN CONTENT ---
         with gr.Column(elem_id="main-col"):
             gr.HTML(HEADER_HTML)
@@ -192,4 +188,4 @@ with gr.Blocks(theme=THEME, css=CSS, title="SatQuery AI") as demo:
     """)
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=THEME, css=CSS)
