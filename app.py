@@ -7,13 +7,13 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
 
     # 0) Validate inputs
     if img1_file is None:
-        return ("Error: Please upload Image 1.", None, None, None, {"error": "missing_img1", **base_trace})
+        return ("System Error: Primary acquisition missing.", None, None, None, {"error": "missing_img1", **base_trace})
 
     if mode != "Single" and img2_file is None:
         arr1, meta1 = read_geotiff(img1_file.name)
         preview1 = to_rgb_preview(arr1)
         return (
-            "Error: Please upload Image 2 for this mode.",
+            "System Error: Secondary acquisition required for this mode.",
             preview1,
             preview1,
             None,
@@ -36,7 +36,7 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
         if mode in ["Change Pair", "Optical+SAR Pair"]:
             compat = check_pair_compatible(arr1, meta1, arr2, meta2)
             if not (compat["ok_shape"] and compat["ok_crs"]):
-                msg = "System Error: Co-registration failed. Images must match in dimensions and CRS for paired analysis."
+                msg = "System Error: Co-registration failed. Images must match in dimensions and CRS."
                 return (msg, preview1, preview1, preview2, {"error": "incompatible_pair", **compat, **base_trace})
 
     # 3) Route to agent
@@ -49,7 +49,6 @@ def run_satquery(mode, img1_file, img2_file, query, progress=gr.Progress(track_t
         evidence = preview1
 
     return answer, evidence, preview1, preview2, exec_summary
-
 
 def update_ui_for_mode(mode):
     if mode == "Single":
@@ -72,7 +71,6 @@ def update_ui_for_mode(mode):
         gr.update(visible=True),
         gr.update(value="**Multi-Modal Fusion**: Upload Optical and SAR passes of the same footprint to overcome atmospheric occlusion.")
     )
-
 
 # ----------------------------
 # ENTERPRISE THEME + CSS
