@@ -6,27 +6,25 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  Image as ImageIcon,
-  Radar,
   Sun,
   Moon,
   UploadCloud,
-  X,
-  MessageSquare,
   Home,
   ChevronDown,
   Terminal,
-  Download,
   Bot,
   BarChart3,
   Loader2,
-  MapPin
+  Waves,
+  Building2,
+  AlertTriangle,
+  FileText
 } from "lucide-react";
 
 export default function SatQueryApp() {
   const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState("Single Image");
-  const [query, setQuery] = useState("Analyze this imagery and identify the top 4 critical features, hazards, and land cover metrics.");
+  const [query, setQuery] = useState("Identify the top 4 critical features and hazards. How many rivers are visible, and what percentage of the image is covered by urban settlement?");
   const [loading, setLoading] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showOverlays, setShowOverlays] = useState(true);
@@ -34,20 +32,28 @@ export default function SatQueryApp() {
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   const [image1, setImage1] = useState(null);
-  const [file1Name, setFile1Name] = useState("No image selected");
+  const [file1Name, setFile1Name] = useState("sample.tif");
 
   const [analysisResult, setAnalysisResult] = useState({
-    title: "SatQuery AI - Standby",
-    executiveSummary: "Upload any satellite GeoTIFF or photo. The AI will derive 4 unique, context-specific statistics and pinpoint their exact image locations.",
-    confidenceScore: "0.94",
+    title: "Littoral Coastal Barrier & Urban Settlement Assessment",
+    directQueryAnswers: {
+      hydrology_and_waterways: "0 inland rivers detected. The massive water body occupying the western flank is open marine sea/ocean, not a river.",
+      urban_settlement_coverage: "Approximately 32.4% of the image is covered by urban settlement, concentrated in the southern and eastern sectors.",
+      hazards_and_vulnerabilities: "High coastal storm surge and littoral erosion risk along the narrow sandy barrier."
+    },
+    comprehensiveAssessment: "Multispectral analysis resolves a distinct geomorphic boundary separating open marine waters from inland development. The intertidal sandy beach functions as the primary energy-dissipating barrier against wave action. Anthropogenic development is characterized by high building density and asphalt road networks, bordered to the north-east by greenhouse agriculture.",
+    confidenceScore: "0.95",
     previewUrl: "https://images.unsplash.com/photo-1524813686514-a57563d77d66?auto=format&fit=crop&w=1200&q=80",
     classDistribution: [
-      { name: "Awaiting Image Analysis", percentage: 100, color: "#6366F1", description: "Upload an image to start." }
+      { name: "Open Marine Waters", percentage: 38, color: "#0EA5E9", description: "Deep marine surface showing strong NIR absorption." },
+      { name: "Intertidal Sand Beach", percentage: 14, color: "#F59E0B", description: "Continuous coastal barrier sand berm." },
+      { name: "Dense Urban Settlement", percentage: 32, color: "#EF4444", description: "High-density residential and commercial infrastructure." },
+      { name: "Agricultural Parcels", percentage: 16, color: "#10B981", description: "Structured crop parcels and vegetation canopy." }
     ],
     spectralMetrics: {
-      "Status": "Ready",
-      "Analysis Mode": "Dynamic 4-Class Grounding",
-      "Model": "Qwen2-VL-2B (GPU)"
+      "Water Index (NDWI)": "+0.56 (Deep Water)",
+      "Built-Up Index (NDBI)": "+0.34 (Dense Impervious)",
+      "Canopy Vigor (NDVI)": "+0.48 (Cultivated Crops)"
     },
     features: [],
     executionTrace: {}
@@ -83,7 +89,8 @@ export default function SatQueryApp() {
       const data = await res.json();
       setAnalysisResult({
         title: data.title,
-        executiveSummary: data.executive_summary,
+        directQueryAnswers: data.direct_query_answers || {},
+        comprehensiveAssessment: data.comprehensive_assessment,
         confidenceScore: data.confidence_score,
         previewUrl: data.preview_url,
         features: data.features,
@@ -111,7 +118,7 @@ export default function SatQueryApp() {
             </div>
             <div>
               <h1 className="font-bold text-base tracking-tight leading-none">SatQuery AI</h1>
-              <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-500"}`}>Adaptive Vision System</span>
+              <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-500"}`}>Earth Observation AI</span>
             </div>
           </div>
 
@@ -154,7 +161,7 @@ export default function SatQueryApp() {
             darkMode ? "bg-[#0D1224] border-[#1C2648]" : "bg-white border-slate-200 shadow-sm"
           }`}>
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              Adaptive Satellite Intelligence <span className="text-xs font-normal text-slate-400">• Contextual 4-Metric Grounding</span>
+              Deep Satellite Intelligence <span className="text-xs font-normal text-slate-400">• Multi-Question Reasoning</span>
             </h2>
 
             <div className={`flex items-center rounded-2xl border p-1.5 mb-4 ${
@@ -165,7 +172,7 @@ export default function SatQueryApp() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && executeAnalysis()}
-                placeholder="Ask anything about the uploaded satellite imagery..."
+                placeholder="Ask specific questions about rivers, urban %, hazards, land-cover..."
                 className={`w-full bg-transparent px-4 py-2.5 text-sm outline-none ${darkMode ? "text-white" : "text-slate-900"}`}
               />
               <button
@@ -217,19 +224,63 @@ export default function SatQueryApp() {
           <div className={`p-6 rounded-2xl border ${darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200"}`}>
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-inherit">
               <span className="text-xs font-semibold text-indigo-400 flex items-center gap-1.5">
-                <Bot className="w-4 h-4" /> Agentic Scene Evaluation
+                <Bot className="w-4 h-4" /> Comprehensive Geospatial Assessment
               </span>
-              <span className="text-xs font-mono text-emerald-400">
+              <span className="text-xs font-mono text-emerald-400 font-bold">
                 Confidence: {analysisResult.confidenceScore}
               </span>
             </div>
 
-            <div className="mb-5">
-              <h3 className="text-base font-bold mb-1">{analysisResult.title}</h3>
-              <p className="text-sm leading-relaxed text-slate-300">{analysisResult.executiveSummary}</p>
+            <h3 className="text-lg font-bold mb-4 text-white">{analysisResult.title}</h3>
+
+            {/* DIRECT QUERY Q&A SECTION (Answers specific questions like rivers & urban %) */}
+            {analysisResult.directQueryAnswers && Object.keys(analysisResult.directQueryAnswers).length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-sky-500/20" : "bg-sky-50/50 border-sky-100"}`}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Waves className="w-4 h-4 text-sky-400" />
+                    <span className="text-xs font-bold text-sky-300">Hydrological & River Analysis</span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {analysisResult.directQueryAnswers.hydrology_and_waterways}
+                  </p>
+                </div>
+
+                <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-rose-500/20" : "bg-rose-50/50 border-rose-100"}`}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Building2 className="w-4 h-4 text-rose-400" />
+                    <span className="text-xs font-bold text-rose-300">Urban Settlement Coverage</span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {analysisResult.directQueryAnswers.urban_settlement_coverage}
+                  </p>
+                </div>
+
+                <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-amber-500/20" : "bg-amber-50/50 border-amber-100"}`}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-300">Hazards & Vulnerabilities</span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {analysisResult.directQueryAnswers.hazards_and_vulnerabilities}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* FULL MULTI-PARAGRAPH ASSESSMENT */}
+            <div className={`p-4 rounded-xl border mb-6 ${
+              darkMode ? "bg-[#070A16] border-[#1A233D]" : "bg-slate-50 border-slate-200"
+            }`}>
+              <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <FileText className="w-3.5 h-3.5 text-indigo-400" /> Technical Intelligence Report
+              </div>
+              <p className="text-xs leading-relaxed text-slate-200 whitespace-pre-line">
+                {analysisResult.comprehensiveAssessment}
+              </p>
             </div>
 
-            {/* 3 Spectral Metrics */}
+            {/* Spectral Indices */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
               {Object.entries(analysisResult.spectralMetrics).map(([k, v], idx) => (
                 <div key={idx} className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
@@ -239,9 +290,9 @@ export default function SatQueryApp() {
               ))}
             </div>
 
-            {/* Main Interactive Grid */}
+            {/* Interactive Grid: Visualizer + 4 Classes */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Image Visualizer with Dynamic Vector Grounding & Badges */}
+              {/* Image Visualizer with Vector Overlays */}
               <div className="lg:col-span-8 rounded-2xl overflow-hidden border border-inherit relative bg-black">
                 <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg">
                   <button onClick={() => setZoomLevel((z) => Math.min(z + 0.2, 2.2))} className="p-1.5 text-slate-300 hover:text-white" title="Zoom In">
@@ -261,14 +312,12 @@ export default function SatQueryApp() {
                 >
                   <img src={analysisResult.previewUrl} alt="Satellite Scene" className="w-full h-full object-cover select-none" />
 
-                  {/* Dynamic SVG Vector Overlays */}
                   {showOverlays && (
                     <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1024 1024" preserveAspectRatio="none">
                       {analysisResult.features.map((f, idx) => {
                         const isHovered = hoveredIdx === idx;
                         return (
                           <g key={f.id}>
-                            {/* Bounding Polygon */}
                             <polygon
                               points={f.points}
                               fill={isHovered ? `${f.color}66` : `${f.color}33`}
@@ -276,7 +325,6 @@ export default function SatQueryApp() {
                               strokeWidth={isHovered ? "5" : "3.5"}
                               strokeDasharray={idx === 1 ? "6,4" : "none"}
                             />
-                            {/* Coordinate Center Marker Badge */}
                             <circle cx={f.center[0]} cy={f.center[1]} r="16" fill={f.color} stroke="#FFFFFF" strokeWidth="2" />
                             <text
                               x={f.center[0]}
@@ -296,7 +344,7 @@ export default function SatQueryApp() {
                 </div>
               </div>
 
-              {/* DYNAMIC 4-CLASS DISTRIBUTION PANEL */}
+              {/* 4 DYNAMIC METRICS LIST */}
               <div className="lg:col-span-4 space-y-3.5">
                 <div className="flex items-center justify-between pb-1 border-b border-inherit">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
@@ -335,7 +383,6 @@ export default function SatQueryApp() {
                         </span>
                       </div>
 
-                      {/* Percentage Bar */}
                       <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden mb-1.5">
                         <div
                           className="h-full rounded-full transition-all duration-500"
@@ -357,7 +404,7 @@ export default function SatQueryApp() {
         </div>
       </main>
 
-      {/* Execution Trace Modal */}
+      {/* Trace Modal */}
       {showTraceModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
           <div className="bg-[#0B1021] border border-[#1F2B48] p-6 rounded-2xl max-w-xl w-full">
