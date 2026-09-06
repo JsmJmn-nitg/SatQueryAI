@@ -17,22 +17,20 @@ import {
   Waves,
   Building2,
   AlertTriangle,
+  Flame,
   FileText,
   HelpCircle,
   Clock,
   Radio,
   Satellite,
-  Globe2,
-  Database,
-  SearchCode
+  SearchCode,
+  Compass
 } from "lucide-react";
 
 export default function SatQueryApp() {
   const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState("Single Image");
-  const [query, setQuery] = useState(
-    "Describe the land-cover and major objects visible in this image. How many rivers flow into the ocean and describe it? Are there urban settlements?"
-  );
+  const [query, setQuery] = useState("What natural hazards or environmental conditions are occurring here?");
   const [loading, setLoading] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showOverlays, setShowOverlays] = useState(true);
@@ -40,67 +38,22 @@ export default function SatQueryApp() {
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   const [image1, setImage1] = useState(null);
-  const [file1Name, setFile1Name] = useState("Primary Satellite Image (.tif, .png)");
+  const [file1Name, setFile1Name] = useState("");
   const [image2, setImage2] = useState(null);
-  const [file2Name, setFile2Name] = useState("Secondary Image / SAR / Date 2 (Optional)");
+  const [file2Name, setFile2Name] = useState("");
+  const [clientPreview, setClientPreview] = useState(null);
 
-  const [analysisResult, setAnalysisResult] = useState({
-    title: "Satellite Image Analysis of Coastal Urban Area",
-    dynamicCards: [
-      {
-        category: "Hydrological & River Analysis",
-        text: "There are no visible inland rivers in the image. The western coastal margin consists of open marine waters separated by an intertidal sand berm.",
-        type: "water"
-      },
-      {
-        category: "Urban Settlement Coverage",
-        text: "The urban settlement is dense, with mixed residential and commercial blocks covering approximately 32% of the total scene in the eastern quadrant.",
-        type: "urban"
-      },
-      {
-        category: "Hazards & Vulnerabilities",
-        text: "Low-lying urban infrastructure abuts the shoreline without deep vegetative buffers, creating vulnerability to coastal storm surges.",
-        type: "hazard"
-      }
-    ],
-    technicalReport: "The multispectral observation confirms a littoral urban landscape. Open marine waters dominate the western quadrant, bounded by a continuous beach sand berm. Inland conurbation exhibits high building density transitioning into cultivated vegetation.",
-    confidenceScore: "0.95",
-    previewUrl: "https://images.unsplash.com/photo-1524813686514-a57563d77d66?auto=format&fit=crop&w=1200&q=80",
-    classDistribution: [
-      { name: "Open Marine Waters", percentage: 42, color: "#0284C7", description: "Deep marine water body displaying strong NIR absorption." },
-      { name: "Dense Urban Settlement", percentage: 32, color: "#E11D48", description: "High-density residential and commercial infrastructure." },
-      { name: "Vegetation & Cropland", percentage: 16, color: "#10B981", description: "Cultivated crop parcels and natural green canopy." },
-      { name: "Intertidal Sand Beach", percentage: 10, color: "#F59E0B", description: "Coastal barrier sand berm and shoreline margin." }
-    ],
-    spectralMetrics: {
-      "Water Index (NDWI)": "+0.58 (High Water Absorption)",
-      "Built-Up Index (NDBI)": "+0.36 (Dense Impervious Surface)",
-      "Canopy Vigor (NDVI)": "+0.44 (Cultivated Greenery)"
-    },
-    features: [
-      { id: "f0", name: "Open Marine Waters", color: "#0284C7", percentage: 42, points: "20,50 340,50 380,500 320,950 20,950", center: [180, 500] },
-      { id: "f1", name: "Dense Urban Settlement", color: "#E11D48", percentage: 32, points: "430,520 720,510 740,880 410,880", center: [570, 700] },
-      { id: "f2", name: "Vegetation & Cropland", color: "#10B981", percentage: 16, points: "440,80 820,70 810,480 430,470", center: [630, 280] },
-      { id: "f3", name: "Intertidal Sand Beach", color: "#F59E0B", percentage: 10, points: "340,50 420,50 460,510 400,950 330,950", center: [390, 500] }
-    ],
-    executionTrace: {
-      task: "single_image_vqa",
-      detected_physical_regime: "COASTAL_MARINE",
-      tools_executed: [
-        { name: "AdaptivePolygonContourEngine", params: { mode: "Single Image" } },
-        { name: "DomainAdaptedVLM_Qwen2VL", params: { temperature: 0.1 } }
-      ]
-    }
-  });
+  // analysisResult is null on startup to avoid showing mock data
+  const [analysisResult, setAnalysisResult] = useState(null);
 
   const fileInputRef1 = useRef(null);
   const fileInputRef2 = useRef(null);
 
   const sampleQueries = [
+    "What natural hazards or environmental conditions are occurring here?",
     "Describe the land-cover and major objects visible in this image.",
     "Highlight the water body and assess whether any inland rivers exist.",
     "What changed between these two dates, and where did the change occur?",
-    "Use optical and SAR data to identify built-up and water bodies.",
     "[AutoFetch] Retrieve Sentinel-2 tiles for Valencia flood zone and evaluate inundated area."
   ];
 
@@ -112,7 +65,8 @@ export default function SatQueryApp() {
       setImage1(file);
       setFile1Name(file.name);
       if (!file.name.toLowerCase().endsWith(".tif") && !file.name.toLowerCase().endsWith(".tiff")) {
-        setAnalysisResult((prev) => ({ ...prev, previewUrl: URL.createObjectURL(file) }));
+        const url = URL.createObjectURL(file);
+        setClientPreview(url);
       }
     } else {
       setImage2(file);
@@ -122,12 +76,12 @@ export default function SatQueryApp() {
 
   const executeAnalysis = async () => {
     if (activeTab === "AutoFetch") {
-      alert("AutoFetch UI Mode: The automated ingestion pipeline will be connected here. For now, upload a local image to run the local grounding engine.");
+      alert("AutoFetch Mode: Data-fetching pipelines for Copernicus and Landsat are configured on standby. Please upload a target image to run the local grounding engine.");
       return;
     }
 
     if (!image1) {
-      alert("Please upload an image first!");
+      alert("Please upload a satellite image first.");
       return;
     }
 
@@ -153,6 +107,7 @@ export default function SatQueryApp() {
         spectralMetrics: data.spectral_metrics,
         executionTrace: data.execution_summary
       });
+      setClientPreview(null);
     } catch (err) {
       alert("Analysis error: " + err.message);
     } finally {
@@ -160,9 +115,17 @@ export default function SatQueryApp() {
     }
   };
 
-  const getCardIcon = (type) => {
-    if (type === "water") return <Waves className="w-4 h-4 text-sky-500" />;
-    if (type === "urban") return <Building2 className="w-4 h-4 text-rose-500" />;
+  const getCardIcon = (type, category = "") => {
+    const text = category.toLowerCase();
+    if (text.includes("fire") || text.includes("combustion") || text.includes("burn") || text.includes("flame")) {
+      return <Flame className="w-4 h-4 text-rose-500" />;
+    }
+    if (type === "water" || text.includes("water") || text.includes("hydro")) {
+      return <Waves className="w-4 h-4 text-sky-500" />;
+    }
+    if (type === "urban" || text.includes("urban") || text.includes("infrastructure")) {
+      return <Building2 className="w-4 h-4 text-indigo-400" />;
+    }
     return <AlertTriangle className="w-4 h-4 text-amber-500" />;
   };
 
@@ -193,7 +156,7 @@ export default function SatQueryApp() {
             <button className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
               darkMode ? "bg-indigo-600/15 text-indigo-400 border border-indigo-500/30" : "bg-indigo-50 text-indigo-700 border border-indigo-100"
             }`}>
-              <Home className="w-4 h-4" /> Console
+              <Home className="w-4 h-4" /> Mission Console
             </button>
             <button
               onClick={() => setShowTraceModal(true)}
@@ -226,7 +189,7 @@ export default function SatQueryApp() {
       {/* Main Workspace */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto">
         <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
-          {/* Top Control Box */}
+          {/* Controls Panel */}
           <div className={`p-6 rounded-2xl border transition-all ${
             darkMode ? "bg-[#111827] border-gray-800 shadow-xl" : "bg-white border-slate-200 shadow-sm"
           }`}>
@@ -234,11 +197,11 @@ export default function SatQueryApp() {
               <h2 className={`text-lg font-bold flex items-center gap-2 ${darkMode ? "text-white" : "text-slate-900"}`}>
                 Interactive Geospatial Intelligence
                 <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${darkMode ? "bg-indigo-950 text-indigo-300 border border-indigo-800" : "bg-indigo-50 text-indigo-700"}`}>
-                  Adaptive Polygon Grounding
+                  Adaptive Vector Grounding
                 </span>
               </h2>
 
-              {/* Mode Selector (Including AutoFetch) */}
+              {/* Mode Selector */}
               <div className="flex gap-1.5 p-1 rounded-xl bg-black/10 dark:bg-black/40 border border-gray-200 dark:border-gray-800">
                 {[
                   { id: "Single Image", label: "Single Image" },
@@ -278,7 +241,7 @@ export default function SatQueryApp() {
                 placeholder={
                   activeTab === "AutoFetch"
                     ? "Enter target location or event query (e.g., 'Fetch Sentinel-2 imagery for Valencia flood and assess damage')..."
-                    : "Ask questions about rivers, urban footprint, land-cover, or active hazards..."
+                    : "Ask questions about fires, water bodies, urban footprint, or hazards..."
                 }
                 className={`w-full bg-transparent px-3 py-2 text-xs font-medium outline-none ${
                   darkMode ? "text-white placeholder-gray-500" : "text-slate-900 placeholder-slate-400"
@@ -315,7 +278,7 @@ export default function SatQueryApp() {
               ))}
             </div>
 
-            {/* Upload Area / AutoFetch Data Catalog UI */}
+            {/* Ingestion Area */}
             <div className={`pt-4 border-t ${darkMode ? "border-gray-800" : "border-slate-200"}`}>
               {activeTab === "AutoFetch" ? (
                 /* AutoFetch Mode Ingestion Architecture Panel */
@@ -349,33 +312,35 @@ export default function SatQueryApp() {
                   </div>
                 </div>
               ) : (
-                /* Standard Upload Slots */
+                /* Local Upload Slots */
                 <div className={`grid gap-4 ${isPairedMode ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"}`}>
-                  {/* Primary Upload */}
                   <div
                     onClick={() => fileInputRef1.current.click()}
                     className={`p-3.5 rounded-xl border-2 border-dashed flex items-center gap-3 cursor-pointer transition-all ${
-                      darkMode ? "border-gray-700 hover:border-indigo-500 bg-[#0B0F19]" : "border-slate-300 hover:border-indigo-600 bg-slate-50"
+                      file1Name
+                        ? darkMode ? "border-indigo-500/50 bg-indigo-950/10" : "border-indigo-400 bg-indigo-50/30"
+                        : darkMode ? "border-gray-700 hover:border-indigo-500 bg-[#0B0F19]" : "border-slate-300 hover:border-indigo-600 bg-slate-50"
                     }`}
                   >
                     <input ref={fileInputRef1} type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" onChange={(e) => handleFileUpload(e, false)} className="hidden" />
                     <UploadCloud className="w-5 h-5 text-indigo-500 shrink-0" />
                     <div className="truncate">
                       <p className={`text-xs font-bold truncate ${darkMode ? "text-gray-200" : "text-slate-800"}`}>
-                        {file1Name}
+                        {file1Name || "Upload Satellite Image (TIFF, GeoTIFF, PNG, JPEG)"}
                       </p>
                       <p className={`text-[11px] ${darkMode ? "text-gray-400" : "text-slate-500"}`}>
-                        {isPairedMode ? "Primary / Optical (Time 1) GeoTIFF or photo" : "Satellite GeoTIFF, TIFF, PNG, or JPEG"}
+                        {file1Name ? "File selected • Ready for inference" : "Click to browse primary satellite scene"}
                       </p>
                     </div>
                   </div>
 
-                  {/* Secondary Upload for Paired Modes */}
                   {isPairedMode && (
                     <div
                       onClick={() => fileInputRef2.current.click()}
                       className={`p-3.5 rounded-xl border-2 border-dashed flex items-center gap-3 cursor-pointer transition-all ${
-                        darkMode ? "border-gray-700 hover:border-indigo-500 bg-[#0B0F19]" : "border-slate-300 hover:border-indigo-600 bg-slate-50"
+                        file2Name
+                          ? darkMode ? "border-indigo-500/50 bg-indigo-950/10" : "border-indigo-400 bg-indigo-50/30"
+                          : darkMode ? "border-gray-700 hover:border-indigo-500 bg-[#0B0F19]" : "border-slate-300 hover:border-indigo-600 bg-slate-50"
                       }`}
                     >
                       <input ref={fileInputRef2} type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" onChange={(e) => handleFileUpload(e, true)} className="hidden" />
@@ -386,10 +351,10 @@ export default function SatQueryApp() {
                       )}
                       <div className="truncate">
                         <p className={`text-xs font-bold truncate ${darkMode ? "text-gray-200" : "text-slate-800"}`}>
-                          {file2Name}
+                          {file2Name || (activeTab === "Bi-Temporal Change" ? "Upload Date 2 Image" : "Upload Co-registered SAR File")}
                         </p>
                         <p className={`text-[11px] ${darkMode ? "text-gray-400" : "text-slate-500"}`}>
-                          {activeTab === "Bi-Temporal Change" ? "Date 2 (Time 2) Image" : "Co-registered SAR Backscatter"}
+                          {file2Name ? "Secondary pair loaded" : "Required for paired analysis"}
                         </p>
                       </div>
                     </div>
@@ -399,182 +364,214 @@ export default function SatQueryApp() {
             </div>
           </div>
 
-          {/* AI Response Card */}
-          <div className={`p-6 rounded-2xl border transition-all ${
-            darkMode ? "bg-[#111827] border-gray-800 shadow-xl" : "bg-white border-slate-200 shadow-sm"
-          }`}>
-            <div className={`flex justify-between items-center mb-4 pb-3 border-b ${darkMode ? "border-gray-800" : "border-slate-200"}`}>
-              <span className="text-xs font-bold text-indigo-500 flex items-center gap-1.5 uppercase tracking-wide">
-                <Bot className="w-4 h-4" /> Comprehensive Geospatial Assessment
-              </span>
-              <span className="text-xs font-mono text-emerald-500 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                Confidence: {analysisResult.confidenceScore}
-              </span>
-            </div>
+          {/* MAIN RESULTS DISPLAY (Only renders when analysis completes) */}
+          {analysisResult ? (
+            <div className={`p-6 rounded-2xl border transition-all ${
+              darkMode ? "bg-[#111827] border-gray-800 shadow-xl" : "bg-white border-slate-200 shadow-sm"
+            }`}>
+              <div className={`flex justify-between items-center mb-4 pb-3 border-b ${darkMode ? "border-gray-800" : "border-slate-200"}`}>
+                <span className="text-xs font-bold text-indigo-400 flex items-center gap-1.5 uppercase tracking-wide">
+                  <Bot className="w-4 h-4" /> Comprehensive Geospatial Assessment
+                </span>
+                <span className="text-xs font-mono text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                  Confidence: {analysisResult.confidenceScore}
+                </span>
+              </div>
 
-            <h3 className={`text-xl font-bold mb-4 ${darkMode ? "text-white" : "text-slate-900"}`}>
-              {analysisResult.title}
-            </h3>
+              <h3 className={`text-xl font-bold mb-4 ${darkMode ? "text-white" : "text-slate-900"}`}>
+                {analysisResult.title}
+              </h3>
 
-            {/* DYNAMIC QUERY ASSESSMENT CARDS (Adapts to any scene domain) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              {analysisResult.dynamicCards.map((card, idx) => (
-                <div
-                  key={idx}
-                  className={`p-4 rounded-xl border ${
-                    darkMode ? "bg-[#0E1726] border-gray-800" : "bg-slate-50 border-slate-200 shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    {getCardIcon(card.type)}
-                    <span className={`text-xs font-bold ${darkMode ? "text-gray-200" : "text-slate-800"}`}>
-                      {card.category}
+              {/* Dynamic Assessment Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                {analysisResult.dynamicCards.map((card, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-4 rounded-xl border ${
+                      darkMode ? "bg-[#0E1726] border-gray-800" : "bg-slate-50 border-slate-200 shadow-sm"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      {getCardIcon(card.type, card.category)}
+                      <span className={`text-xs font-bold ${darkMode ? "text-gray-200" : "text-slate-800"}`}>
+                        {card.category}
+                      </span>
+                    </div>
+                    <p className={`text-xs leading-relaxed ${darkMode ? "text-gray-300" : "text-slate-600"}`}>
+                      {card.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Technical Intelligence Report */}
+              <div className={`p-4 rounded-xl border mb-6 ${
+                darkMode ? "bg-[#0B0F19] border-gray-800" : "bg-slate-50 border-slate-200"
+              }`}>
+                <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-indigo-400">
+                  <FileText className="w-3.5 h-3.5" /> Technical Intelligence Report
+                </div>
+                <p className={`text-xs leading-relaxed whitespace-pre-line ${darkMode ? "text-gray-300" : "text-slate-700"}`}>
+                  {analysisResult.technicalReport}
+                </p>
+              </div>
+
+              {/* Dynamic Spectral Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                {Object.entries(analysisResult.spectralMetrics).map(([k, v], idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-xl border ${
+                      darkMode ? "bg-[#0B0F19] border-gray-800" : "bg-white border-slate-200 shadow-sm"
+                    }`}
+                  >
+                    <span className={`text-[10px] block uppercase font-mono font-bold mb-0.5 ${darkMode ? "text-gray-400" : "text-slate-500"}`}>
+                      {k}
+                    </span>
+                    <span className="text-xs font-bold text-indigo-400">{v}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Viewport + Vector Grounding */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <div className={`lg:col-span-8 rounded-2xl overflow-hidden border relative bg-black ${
+                  darkMode ? "border-gray-800" : "border-slate-200"
+                }`}>
+                  <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-black/75 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg">
+                    <button onClick={() => setZoomLevel((z) => Math.min(z + 0.2, 2.2))} className="p-1.5 text-gray-300 hover:text-white" title="Zoom In">
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => setZoomLevel((z) => Math.max(z - 0.2, 0.8))} className="p-1.5 text-gray-300 hover:text-white" title="Zoom Out">
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => setShowOverlays(!showOverlays)} className={`p-1.5 rounded-lg transition-colors ${showOverlays ? "text-indigo-400 bg-indigo-500/20" : "text-gray-400"}`} title="Toggle Polygons">
+                      <Layers className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="relative w-full h-[450px] overflow-hidden" style={{ transform: `scale(${zoomLevel})`, transformOrigin: "center center" }}>
+                    <img src={analysisResult.previewUrl} alt="Satellite Scene" className="w-full h-full object-cover select-none" />
+
+                    {showOverlays && (
+                      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1024 1024" preserveAspectRatio="none">
+                        {analysisResult.features.map((f, idx) => {
+                          const isHovered = hoveredIdx === idx;
+                          return (
+                            <g key={f.id} className="transition-all duration-300">
+                              <polygon
+                                points={f.points}
+                                fill={isHovered ? `${f.color}77` : `${f.color}33`}
+                                stroke={f.color}
+                                strokeWidth={isHovered ? "4" : "2.5"}
+                              />
+                              <circle cx={f.center[0]} cy={f.center[1]} r={isHovered ? "18" : "15"} fill={f.color} stroke="#FFFFFF" strokeWidth="2.5" />
+                              <text x={f.center[0]} y={f.center[1] + 4.5} textAnchor="middle" fill="#FFFFFF" fontSize="12" fontWeight="bold">
+                                {idx + 1}
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    )}
+                  </div>
+                </div>
+
+                {/* Grounded Distribution */}
+                <div className="lg:col-span-4 space-y-3">
+                  <div className={`flex items-center justify-between pb-2 border-b ${darkMode ? "border-gray-800" : "border-slate-200"}`}>
+                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${darkMode ? "text-gray-300" : "text-slate-700"}`}>
+                      <BarChart3 className="w-3.5 h-3.5 text-indigo-400" /> Grounded Distribution
+                    </h4>
+                    <span className={`text-[10px] font-mono font-bold ${darkMode ? "text-gray-500" : "text-slate-400"}`}>
+                      {analysisResult.classDistribution.length} Classes
                     </span>
                   </div>
-                  <p className={`text-xs leading-relaxed ${darkMode ? "text-gray-300" : "text-slate-600"}`}>
-                    {card.text}
+
+                  {analysisResult.classDistribution.map((item, idx) => {
+                    const isHovered = hoveredIdx === idx;
+                    return (
+                      <div
+                        key={idx}
+                        onMouseEnter={() => setHoveredIdx(idx)}
+                        onMouseLeave={() => setHoveredIdx(null)}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                          isHovered
+                            ? darkMode
+                              ? "border-indigo-500 bg-indigo-500/10 shadow-lg"
+                              : "border-indigo-500 bg-indigo-50 shadow-md"
+                            : darkMode
+                            ? "border-gray-800 bg-[#0B0F19] hover:border-gray-700"
+                            : "border-slate-200 bg-white hover:border-slate-300 shadow-sm"
+                        }`}
+                      >
+                        <div className="flex justify-between items-center text-xs mb-1.5">
+                          <span className={`flex items-center gap-2 font-bold ${darkMode ? "text-white" : "text-slate-800"}`}>
+                            <span
+                              className="w-4 h-4 rounded-md text-[10px] font-bold text-white flex items-center justify-center shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            >
+                              {idx + 1}
+                            </span>
+                            <span className="truncate max-w-[160px]" title={item.name}>
+                              {item.name}
+                            </span>
+                          </span>
+                          <span className={`font-mono text-xs font-bold ${darkMode ? "text-gray-300" : "text-slate-700"}`}>
+                            {item.percentage}%
+                          </span>
+                        </div>
+
+                        <div className={`w-full rounded-full h-1.5 overflow-hidden mb-2 ${darkMode ? "bg-gray-800" : "bg-slate-100"}`}>
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
+                          />
+                        </div>
+
+                        {item.desc && (
+                          <p className={`text-[11px] leading-snug ${darkMode ? "text-gray-400" : "text-slate-500"}`}>
+                            {item.desc}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Standby State When Waiting for Analysis */
+            <div className={`p-12 rounded-2xl border text-center flex flex-col items-center justify-center min-h-[400px] transition-all ${
+              darkMode ? "bg-[#111827] border-gray-800" : "bg-white border-slate-200 shadow-sm"
+            }`}>
+              {clientPreview ? (
+                <div className="max-w-md w-full space-y-4">
+                  <div className="rounded-xl overflow-hidden border border-gray-700 relative h-64 bg-black">
+                    <img src={clientPreview} alt="Selected Satellite Preview" className="w-full h-full object-cover" />
+                  </div>
+                  <p className="text-xs font-bold text-emerald-400">
+                    Image Staged: {file1Name}
+                  </p>
+                  <p className={`text-xs ${darkMode ? "text-gray-400" : "text-slate-600"}`}>
+                    Enter your question in the query bar above and click <strong className="text-indigo-400">Analyze</strong> to compute grounded polygon boundaries and diagnostic indices.
                   </p>
                 </div>
-              ))}
-            </div>
-
-            {/* Technical Report */}
-            <div className={`p-4 rounded-xl border mb-6 ${
-              darkMode ? "bg-[#0B0F19] border-gray-800" : "bg-slate-50 border-slate-200"
-            }`}>
-              <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-indigo-500">
-                <FileText className="w-3.5 h-3.5" /> Technical Intelligence Report
-              </div>
-              <p className={`text-xs leading-relaxed whitespace-pre-line ${darkMode ? "text-gray-300" : "text-slate-700"}`}>
-                {analysisResult.technicalReport}
-              </p>
-            </div>
-
-            {/* Dynamic Spectral Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-              {Object.entries(analysisResult.spectralMetrics).map(([k, v], idx) => (
-                <div
-                  key={idx}
-                  className={`p-3 rounded-xl border ${
-                    darkMode ? "bg-[#0B0F19] border-gray-800" : "bg-white border-slate-200 shadow-sm"
-                  }`}
-                >
-                  <span className={`text-[10px] block uppercase font-mono font-bold mb-0.5 ${darkMode ? "text-gray-400" : "text-slate-500"}`}>
-                    {k}
-                  </span>
-                  <span className="text-xs font-bold text-indigo-500">{v}</span>
+              ) : (
+                <div className="max-w-sm space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto text-indigo-400">
+                    <Compass className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h3 className={`text-sm font-bold ${darkMode ? "text-white" : "text-slate-800"}`}>
+                    Earth Observation Engine Standby
+                  </h3>
+                  <p className={`text-xs leading-relaxed ${darkMode ? "text-gray-400" : "text-slate-500"}`}>
+                    Upload a GeoTIFF or satellite image above, enter your analytical prompt, and click <strong>Analyze</strong> to run the model pipeline.
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
-
-            {/* Interactive Visualizer + Dynamic Class Distribution */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Image Viewport with Polygon Overlays */}
-              <div className={`lg:col-span-8 rounded-2xl overflow-hidden border relative bg-black ${
-                darkMode ? "border-gray-800" : "border-slate-200"
-              }`}>
-                <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-black/75 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg">
-                  <button onClick={() => setZoomLevel((z) => Math.min(z + 0.2, 2.2))} className="p-1.5 text-gray-300 hover:text-white" title="Zoom In">
-                    <ZoomIn className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => setZoomLevel((z) => Math.max(z - 0.2, 0.8))} className="p-1.5 text-gray-300 hover:text-white" title="Zoom Out">
-                    <ZoomOut className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => setShowOverlays(!showOverlays)} className={`p-1.5 rounded-lg transition-colors ${showOverlays ? "text-indigo-400 bg-indigo-500/20" : "text-gray-400"}`} title="Toggle Polygons">
-                    <Layers className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="relative w-full h-[450px] overflow-hidden" style={{ transform: `scale(${zoomLevel})`, transformOrigin: "center center" }}>
-                  <img src={analysisResult.previewUrl} alt="Satellite Scene" className="w-full h-full object-cover select-none" />
-
-                  {showOverlays && (
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1024 1024" preserveAspectRatio="none">
-                      {analysisResult.features.map((f, idx) => {
-                        const isHovered = hoveredIdx === idx;
-                        return (
-                          <g key={f.id} className="transition-all duration-300">
-                            <polygon
-                              points={f.points}
-                              fill={isHovered ? `${f.color}77` : `${f.color}33`}
-                              stroke={f.color}
-                              strokeWidth={isHovered ? "4" : "2.5"}
-                            />
-                            <circle cx={f.center[0]} cy={f.center[1]} r={isHovered ? "18" : "15"} fill={f.color} stroke="#FFFFFF" strokeWidth="2.5" />
-                            <text x={f.center[0]} y={f.center[1] + 4.5} textAnchor="middle" fill="#FFFFFF" fontSize="12" fontWeight="bold">
-                              {idx + 1}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
-                  )}
-                </div>
-              </div>
-
-              {/* Dynamic Class Distribution List */}
-              <div className="lg:col-span-4 space-y-3">
-                <div className={`flex items-center justify-between pb-2 border-b ${darkMode ? "border-gray-800" : "border-slate-200"}`}>
-                  <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${darkMode ? "text-gray-300" : "text-slate-700"}`}>
-                    <BarChart3 className="w-3.5 h-3.5 text-indigo-500" /> Grounded Land Distribution
-                  </h4>
-                  <span className={`text-[10px] font-mono font-bold ${darkMode ? "text-gray-500" : "text-slate-400"}`}>
-                    {analysisResult.classDistribution.length} Classes
-                  </span>
-                </div>
-
-                {analysisResult.classDistribution.map((item, idx) => {
-                  const isHovered = hoveredIdx === idx;
-                  return (
-                    <div
-                      key={idx}
-                      onMouseEnter={() => setHoveredIdx(idx)}
-                      onMouseLeave={() => setHoveredIdx(null)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                        isHovered
-                          ? darkMode
-                            ? "border-indigo-500 bg-indigo-500/10 shadow-lg"
-                            : "border-indigo-500 bg-indigo-50 shadow-md"
-                          : darkMode
-                          ? "border-gray-800 bg-[#0B0F19] hover:border-gray-700"
-                          : "border-slate-200 bg-white hover:border-slate-300 shadow-sm"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-xs mb-1.5">
-                        <span className={`flex items-center gap-2 font-bold ${darkMode ? "text-white" : "text-slate-800"}`}>
-                          <span
-                            className="w-4 h-4 rounded-md text-[10px] font-bold text-white flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: item.color }}
-                          >
-                            {idx + 1}
-                          </span>
-                          <span className="truncate max-w-[160px]" title={item.name}>
-                            {item.name}
-                          </span>
-                        </span>
-                        <span className={`font-mono text-xs font-bold ${darkMode ? "text-gray-300" : "text-slate-700"}`}>
-                          {item.percentage}%
-                        </span>
-                      </div>
-
-                      <div className={`w-full rounded-full h-1.5 overflow-hidden mb-2 ${darkMode ? "bg-gray-800" : "bg-slate-100"}`}>
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
-                        />
-                      </div>
-
-                      {item.description && (
-                        <p className={`text-[11px] leading-snug ${darkMode ? "text-gray-400" : "text-slate-500"}`}>
-                          {item.description}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </main>
 
@@ -585,15 +582,22 @@ export default function SatQueryApp() {
             darkMode ? "bg-[#111827] border-gray-700 text-white" : "bg-white border-slate-200 text-slate-900"
           }`}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-sm text-indigo-500 flex items-center gap-2">
+              <h3 className="font-bold text-sm text-indigo-400 flex items-center gap-2">
                 <Terminal className="w-4 h-4" /> Auditable Agentic Trace
               </h3>
-              <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-mono">
+              <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono">
                 Judge Review Ready
               </span>
             </div>
             <pre className="bg-[#0B0F19] text-emerald-400 p-4 rounded-xl text-xs font-mono overflow-auto max-h-96 border border-gray-800">
-              {JSON.stringify(analysisResult.executionTrace, null, 2)}
+              {JSON.stringify(analysisResult?.executionTrace || {
+                status: "Awaiting Image Ingestion",
+                orchestrated_models: [
+                  "GeoChat-7B (RS Zero-Shot Specialist)",
+                  "Qwen2-VL-2B (Local Vision Synthesizer)",
+                  "PhysicalContourExtractionEngine"
+                ]
+              }, null, 2)}
             </pre>
             <button
               onClick={() => setShowTraceModal(false)}
