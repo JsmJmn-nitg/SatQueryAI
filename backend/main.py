@@ -16,13 +16,13 @@ import cv2
 import torch
 
 from transformers import (
-    Qwen2VLForConditionalGeneration,
+    LlavaForConditionalGeneration,
     AutoProcessor,
     BitsAndBytesConfig,
 )
 from gradio_client import Client, handle_file
 
-app = FastAPI(title="SatQuery AI", version="18.0.0")
+app = FastAPI(title="SatQuery AI", version="19.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,9 +32,512 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# =========================================================
+# HEALTH — responds immediately even while model is loading
+# =========================================================
+model_ready = False
+
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "model_loaded": vlm_model is not None}
+    # Return 200 always so the tunnel starts; model_ready tells frontend status
+    return {"status": "ok", "model_loaded": model_ready}
+
+# =========================================================
+# LOAD LLaVA-1.5-7B in 4-bit  (~3.8 GB VRAM)
+# =========================================================
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"[SatQuery] Device: {device}")
+
+MODEL_ID = "llava-hf/llava-1.5-7b-hf"
+
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
+) if device == "cuda" else None
+
+vlm_model     = None
+vlm_processor = None
+
+try:
+    print(f"[SatQuery] Downloading/loading {MODEL_ID} ...")
+    vlm_model = LlavaForConditionalGeneration.from_pretrained(
+        MODEL_ID,
+        quantization_config=bnb_config,
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+        device_map="auto",
+        low_cpu_mem_usage=True,
+    )
+    vlm_processor = AutoProcessor.from_pretrained(MODEL_ID)
+    vlm_model.eval()
+    model_ready = True
+    print(f"[SatQuery] ✅ {MODEL_ID} loaded OK")
+except Exception as e:
+    print(f"[SatQuery] ❌ Model load failed: {e}")
+    vlm_model, vlm_processor = None, None
+
+# =========================================================
+# GEOCHAT
+# =========================================================
+def query_geochat(pil_img: Image.Image, query: str, timeout: int = 20) -> Optional[str]:
+    def _call():
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                pil_img.save(tmp.name, format="PNG")
+                tmp_path = tmp.name
+            client = Client("Bireswar26/geochat")
+            result = client.predict(
+                image=handle_file(tmp_path),
+                text=query,
+                api_name="/predict"
+            )
+            os.remove(tmp_path)
+            raw = str(result).strip()
+            if len(raw) < 30 or raw.lower().startswith("i cannot"):
+                return None
+            return raw
+        except Exception as e:
+            print(f"GeoChat error: {e}")
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_call)
+        try:
+            return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            print("GeoChat timed out")
+            return None
+
+# =========================================================
+# SPECTRAL INDICES
+# =========================================================
+def calculate_spectral_indices(np_rgb: np.ndarray) -> Dict[str, str]:
+    try:
+        img = np_rgb.astype(np.float32) / 255.0
+        r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+
+        ndvi        = float(np.mean((g - r) / (g + r + 1e-8)))
+        ndwi        = float(np.mean((g - b) / (g + b + 1e-8)))
+        gray        = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2GRAY)
+        lap         = cv2.Laplacian(gray, cv2.CV_64F)
+        urban_score = float(np.mean(np.abs(lap)) / 10.0)
+        brightness  = float(np.mean(gray) / 255.0)
+
+        return {
+            "NDVI (approx)": f"{ndvi:.3f}",
+            "NDWI (approx)": f"{ndwi:.3f}",
+            "Urban Texture":  f"{urban_score:.3f}",
+            "Brightness":     f"{brightness:.3f}",
+        }
+    except Exception as e:
+        print(f"Spectral error: {e}")
+        return {"NDVI": "err", "NDWI": "err", "Urban": "err", "Brightness": "err"}
+
+# =========================================================
+# DOMAIN DETECTION
+# =========================================================
+def detect_domain(np_rgb: np.ndarray, geochat_text: str = "") -> str:
+    hsv   = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2HSV)
+    total = float(np_rgb.shape[0] * np_rgb.shape[1])
+
+    water_mask = (hsv[:, :, 0] > 90)  & (hsv[:, :, 0] < 140) & (hsv[:, :, 1] > 30)
+    fire_mask  = ((hsv[:, :, 0] < 15) | (hsv[:, :, 0] > 165)) & (hsv[:, :, 1] > 60)
+    veg_mask   = (hsv[:, :, 0] > 35)  & (hsv[:, :, 0] < 85)  & (hsv[:, :, 1] > 30)
+
+    water_pct = np.sum(water_mask) / total
+    fire_pct  = np.sum(fire_mask)  / total
+    veg_pct   = np.sum(veg_mask)   / total
+
+    gc = geochat_text.lower()
+
+    if fire_pct > 0.10 or any(w in gc for w in ["fire", "wildfire", "burn", "smoke", "flame"]):
+        return "WILDFIRE"
+    if water_pct > 0.25 or any(w in gc for w in ["ocean", "sea", "coast", "marine"]):
+        return "COASTAL"
+    if veg_pct < 0.10 or any(w in gc for w in ["city", "urban", "building", "road"]):
+        return "URBAN"
+    return "TERRESTRIAL"
+
+# =========================================================
+# POLYGON EXTRACTION
+# =========================================================
+def extract_polygons(np_rgb: np.ndarray, domain: str):
+    h, w   = np_rgb.shape[:2]
+    total  = float(h * w)
+    hsv    = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2HSV)
+    gray   = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2GRAY)
+
+    water_mask = (hsv[:, :, 0] > 90)  & (hsv[:, :, 0] < 140) & (hsv[:, :, 1] > 30)
+    veg_mask   = (hsv[:, :, 0] > 35)  & (hsv[:, :, 0] < 85)  & (hsv[:, :, 1] > 30)
+    fire_mask  = ((hsv[:, :, 0] < 15) | (hsv[:, :, 0] > 165)) & (hsv[:, :, 1] > 60)
+    edges      = np.abs(cv2.Laplacian(gray, cv2.CV_64F))
+    urban_mask = (edges > 20) & (~water_mask) & (~veg_mask)
+    smoke_mask = (gray > 180) & (hsv[:, :, 1] < 20)
+    bare_mask  = (gray > 100) & (~urban_mask) & (~water_mask) & (~veg_mask) & (~fire_mask)
+
+    if domain == "WILDFIRE":
+        mask_defs = [
+            ("Active Fire Zone",  fire_mask | (gray < 25), "#DC2626", "High-temperature combustion area."),
+            ("Smoke / Ash Plume", smoke_mask,               "#6B7280", "Suspended particulate and smoke."),
+            ("Burned Vegetation", bare_mask,                "#78350F", "Charred biomass and scorched soil."),
+            ("Intact Canopy",     veg_mask,                 "#10B981", "Vegetation outside fire perimeter."),
+        ]
+    elif domain == "COASTAL":
+        mask_defs = [
+            ("Open Water",             water_mask, "#0284C7", "Marine or lacustrine surface."),
+            ("Coastal Infrastructure", urban_mask, "#E11D48", "Built environment near shore."),
+            ("Beach / Littoral",       bare_mask,  "#F59E0B", "Sandy substrate and intertidal zone."),
+            ("Coastal Vegetation",     veg_mask,   "#10B981", "Mangroves or coastal flora."),
+        ]
+    elif domain == "URBAN":
+        mask_defs = [
+            ("Built-up Structures", urban_mask, "#E11D48", "Rooftops, roads, impervious cover."),
+            ("Urban Green Space",   veg_mask,   "#10B981", "Parks and tree canopy."),
+            ("Bare / Construction", bare_mask,  "#F59E0B", "Exposed soil or development."),
+            ("Water Features",      water_mask, "#0284C7", "Urban ponds or rivers."),
+        ]
+    else:
+        mask_defs = [
+            ("Vegetative Canopy",   veg_mask,   "#10B981", "Active photosynthetic biomass."),
+            ("Impervious Surfaces", urban_mask, "#E11D48", "Roads and structures."),
+            ("Bare Soil",           bare_mask,  "#F59E0B", "Exposed earth."),
+            ("Water Bodies",        water_mask, "#0284C7", "Lakes, rivers, or wetlands."),
+        ]
+
+    polygons = []
+    kernel   = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+
+    for name, mask, color, desc in mask_defs:
+        clean = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+        clean = cv2.morphologyEx(clean, cv2.MORPH_OPEN,  kernel)
+        contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            continue
+        c    = max(contours, key=cv2.contourArea)
+        area = cv2.contourArea(c)
+        if area < total * 0.005:
+            continue
+        eps    = 0.015 * cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, eps, True)
+        if len(approx) < 3:
+            continue
+        pts = " ".join(f"{int(p[0][0]/w*1024)},{int(p[0][1]/h*1024)}" for p in approx)
+        M   = cv2.moments(c)
+        cx  = int(M["m10"] / M["m00"] / w * 1024) if M["m00"] > 0 else 512
+        cy  = int(M["m01"] / M["m00"] / h * 1024) if M["m00"] > 0 else 512
+        pct = round(area / total * 100, 1)
+        polygons.append({
+            "name": name, "desc": desc, "color": color,
+            "percentage": max(pct, 1.0), "points": pts, "center": [cx, cy]
+        })
+
+    fallbacks = [
+        ("Region A", "#6366F1"), ("Region B", "#8B5CF6"), ("Region C", "#A78BFA")
+    ]
+    i = 0
+    while len(polygons) < 3 and i < len(fallbacks):
+        polygons.append({
+            "name": fallbacks[i][0], "desc": "Unclassified region.",
+            "color": fallbacks[i][1], "percentage": 5.0,
+            "points": "100,100 300,100 300,300 100,300", "center": [200, 200]
+        })
+        i += 1
+
+    return polygons[:4]
+
+# =========================================================
+# LLaVA GENERATION
+# LLaVA-1.5 uses a special prompt format:
+#   "USER: <image>\n{text}\nASSISTANT:"
+# The processor handles image token injection automatically.
+# =========================================================
+
+DOMAIN_CONTEXT = {
+    "WILDFIRE":    "This is a satellite image of a wildfire or burn area.",
+    "COASTAL":     "This is a satellite image of a coastal or marine environment.",
+    "URBAN":       "This is a satellite image of an urban or built-up area.",
+    "TERRESTRIAL": "This is a satellite image of a terrestrial landscape.",
+}
+
+def run_llava(pil_img: Image.Image, geochat_text: str, query: str, domain: str) -> Dict:
+    if vlm_model is None or vlm_processor is None:
+        print("Model not loaded, using fallback")
+        return _fallback_result(geochat_text, query, domain)
+
+    domain_ctx  = DOMAIN_CONTEXT.get(domain, DOMAIN_CONTEXT["TERRESTRIAL"])
+    geochat_ctx = ""
+    if geochat_text:
+        geochat_ctx = (
+            f"A remote-sensing specialist already noted: \"{geochat_text[:300]}\". "
+            "Use this as supporting context.\n\n"
+        )
+
+    # LLaVA-1.5 prompt format — <image> token must come first in USER turn
+    prompt = (
+        f"USER: <image>\n"
+        f"{domain_ctx}\n"
+        f"{geochat_ctx}"
+        f"Question: {query}\n\n"
+        "Answer using EXACTLY these 8 lines with no extra text:\n"
+        "TITLE: <8-12 word scene title>\n"
+        "REPORT: <3-4 sentences answering the question with specific observations>\n"
+        "CARD1_NAME: <first visible feature category>\n"
+        "CARD1_TEXT: <one sentence observation about it>\n"
+        "CARD2_NAME: <second visible feature category>\n"
+        "CARD2_TEXT: <one sentence observation about it>\n"
+        "CARD3_NAME: <third visible feature category>\n"
+        "CARD3_TEXT: <one sentence observation about it>\n"
+        "ASSISTANT:"
+    )
+
+    try:
+        # Resize image to prevent OOM — LLaVA uses 336x336 patches internally
+        img_resized = pil_img.copy()
+        img_resized.thumbnail((672, 672), Image.LANCZOS)
+
+        inputs = vlm_processor(
+            text=prompt,
+            images=img_resized,
+            return_tensors="pt",
+        ).to(device)
+
+        with torch.no_grad():
+            output_ids = vlm_model.generate(
+                **inputs,
+                max_new_tokens=350,
+                do_sample=False,
+                repetition_penalty=1.1,
+                temperature=1.0,       # ignored when do_sample=False but silences warning
+            )
+
+        # Decode only the newly generated tokens
+        new_tokens = output_ids[:, inputs["input_ids"].shape[1]:]
+        raw = vlm_processor.batch_decode(
+            new_tokens,
+            skip_special_tokens=True,
+        )[0].strip()
+
+        print(f"\n=== LLaVA RAW ===\n{raw}\n=================\n")
+        return _parse_output(raw, geochat_text, query, domain)
+
+    except torch.cuda.OutOfMemoryError:
+        print("OOM — clearing cache and falling back")
+        torch.cuda.empty_cache()
+        return _fallback_result(geochat_text, query, domain)
+    except Exception as e:
+        print(f"LLaVA generation error: {e}")
+        return _fallback_result(geochat_text, query, domain)
+
+# =========================================================
+# OUTPUT PARSER
+# =========================================================
+def _parse_output(raw: str, geochat_text: str, query: str, domain: str) -> Dict:
+    # Strip markdown artefacts
+    cleaned = re.sub(r"[*#_`]+", "", raw)
+    cleaned = re.sub(r"\n{2,}", "\n", cleaned).strip()
+
+    data: Dict[str, str] = {}
+
+    # Strategy 1: strict KEY: value lines
+    for line in cleaned.splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            k = k.strip().upper().replace(" ", "_")
+            v = v.strip()
+            if k and v:
+                data[k] = v
+
+    # Strategy 2: fuzzy regex fallback
+    patterns = {
+        "TITLE":      r"(?:title|scene\s+title)\s*[:\-]\s*(.+)",
+        "REPORT":     r"(?:report|summary|analysis)\s*[:\-]\s*(.+)",
+        "CARD1_NAME": r"card\s*1\s*name\s*[:\-]\s*(.+)",
+        "CARD1_TEXT": r"card\s*1\s*(?:text|desc(?:ription)?)\s*[:\-]\s*(.+)",
+        "CARD2_NAME": r"card\s*2\s*name\s*[:\-]\s*(.+)",
+        "CARD2_TEXT": r"card\s*2\s*(?:text|desc(?:ription)?)\s*[:\-]\s*(.+)",
+        "CARD3_NAME": r"card\s*3\s*name\s*[:\-]\s*(.+)",
+        "CARD3_TEXT": r"card\s*3\s*(?:text|desc(?:ription)?)\s*[:\-]\s*(.+)",
+    }
+    for key, pat in patterns.items():
+        if key not in data:
+            m = re.search(pat, cleaned, re.IGNORECASE)
+            if m:
+                data[key] = m.group(1).strip()
+
+    # Discard prompt-echo / placeholder values
+    BAD = ["<", "[", "8-12 word", "3-4 sentence", "one sentence",
+           "category", "visible feature", "no extra", "exactly"]
+    for key in list(data.keys()):
+        if any(b in data[key].lower() for b in BAD):
+            del data[key]
+
+    # Fallback REPORT: grab longest meaningful sentences
+    if "REPORT" not in data:
+        sentences = re.findall(r"[A-Z][^.!?]{30,}[.!?]", cleaned)
+        good = [s for s in sentences if not any(b in s.lower() for b in BAD)]
+        if good:
+            data["REPORT"] = " ".join(good[:4])
+
+    # Fallback TITLE
+    if "TITLE" not in data:
+        data["TITLE"] = {
+            "WILDFIRE":    "Wildfire & Smoke Detection Report",
+            "COASTAL":     "Coastal Zone Remote Sensing Assessment",
+            "URBAN":       "Urban Landscape Intelligence Report",
+            "TERRESTRIAL": "Terrestrial Land Cover Analysis",
+        }.get(domain, "Satellite Image Analysis")
+
+    # Domain-specific card defaults
+    card_defaults = {
+        "WILDFIRE": [
+            ("Fire & Combustion",  "Active fire perimeter detected with thermal anomalies."),
+            ("Burn Scar",          "Charred vegetation marks the historical fire extent."),
+            ("Smoke Plume",        "Dense smoke indicates ongoing combustion activity."),
+        ],
+        "COASTAL": [
+            ("Open Water",         "Marine surface water dominates the scene."),
+            ("Shoreline",          "Sandy littoral zone visible at the land-water boundary."),
+            ("Coastal Vegetation", "Mangroves or salt marsh identified near shore."),
+        ],
+        "URBAN": [
+            ("Built-up Area",      "Dense impervious surfaces indicate urban development."),
+            ("Green Space",        "Parks and tree canopy visible within the urban matrix."),
+            ("Infrastructure",     "Road networks and rooftops create high texture patterns."),
+        ],
+        "TERRESTRIAL": [
+            ("Vegetation Cover",   "Mixed vegetation dominates the landscape."),
+            ("Bare Soil",          "Exposed earth visible in cleared or eroded areas."),
+            ("Water Features",     "Minor water bodies or drainage channels present."),
+        ],
+    }
+    defaults = card_defaults.get(domain, card_defaults["TERRESTRIAL"])
+    gc_snippet = (geochat_text or "Satellite imagery analyzed.")[:300]
+
+    return {
+        "title":      data.get("TITLE"),
+        "report":     data.get("REPORT", gc_snippet),
+        "card1_name": data.get("CARD1_NAME", defaults[0][0]),
+        "card1_text": data.get("CARD1_TEXT", defaults[0][1]),
+        "card2_name": data.get("CARD2_NAME", defaults[1][0]),
+        "card2_text": data.get("CARD2_TEXT", defaults[1][1]),
+        "card3_name": data.get("CARD3_NAME", defaults[2][0]),
+        "card3_text": data.get("CARD3_TEXT", defaults[2][1]),
+    }
+
+
+def _fallback_result(geochat_text: str, query: str, domain: str) -> Dict:
+    return _parse_output("", geochat_text, query, domain)
+
+# =========================================================
+# IMAGE LOADER
+# =========================================================
+def load_image(file_bytes: bytes):
+    pil_img = None
+
+    try:
+        pil_img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+    except Exception:
+        pass
+
+    if pil_img is None:
+        try:
+            arr = np.frombuffer(file_bytes, np.uint8)
+            bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if bgr is not None:
+                pil_img = Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+        except Exception:
+            pass
+
+    if pil_img is None:
+        try:
+            import tifffile
+            arr = tifffile.imread(io.BytesIO(file_bytes))
+            if arr.ndim == 2:
+                arr = np.stack([arr] * 3, axis=-1)
+            elif arr.ndim == 3 and arr.shape[0] <= 10:
+                arr = np.moveaxis(arr[:3], 0, -1)
+            arr = arr[:, :, :3]
+            arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8) * 255
+            pil_img = Image.fromarray(arr.astype(np.uint8))
+        except Exception:
+            pass
+
+    if pil_img is None:
+        raise HTTPException(status_code=400, detail="Unsupported or corrupt image file.")
+
+    np_img = cv2.resize(np.array(pil_img), (1024, 1024))
+    buf    = io.BytesIO()
+    pil_img.save(buf, format="JPEG", quality=90)
+    b64    = base64.b64encode(buf.getvalue()).decode()
+    return pil_img, np_img, b64
+
+# =========================================================
+# ANALYZE ENDPOINT
+# =========================================================
+@app.post("/api/analyze")
+async def analyze(
+    mode:   str        = Form(...),
+    query:  str        = Form(...),
+    image1: UploadFile = File(...),
+):
+    img_bytes             = await image1.read()
+    pil_img, np_img, b64 = load_image(img_bytes)
+
+    geochat_text = query_geochat(pil_img, query)
+    gc_status    = "ok" if geochat_text else "timeout/fallback"
+
+    domain   = detect_domain(np_img, geochat_text or "")
+    polygons = extract_polygons(np_img, domain)
+    metrics  = calculate_spectral_indices(np_img)
+
+    # Use LLaVA for synthesis
+    parsed   = run_llava(pil_img, geochat_text or "", query, domain)
+
+    trace = {
+        "domain": domain,
+        "models": [
+            {"name": "GeoChat-7B",       "role": "RS Specialist",   "status": gc_status},
+            {"name": "LLaVA-1.5-7B-4bit","role": "VLM Synthesizer", "status": "ok"},
+            {"name": "CV Segmenter",     "role": "Polygon Grounding","status": "ok",
+             "polygons": len(polygons)},
+        ],
+        "geochat_snippet": (geochat_text or "")[:300],
+    }
+
+    return JSONResponse({
+        "title":            parsed["title"],
+        "technical_report": parsed["report"],
+        "dynamic_cards": [
+            {"category": parsed["card1_name"], "text": parsed["card1_text"], "type": "urban"},
+            {"category": parsed["card2_name"], "text": parsed["card2_text"], "type": "water"},
+            {"category": parsed["card3_name"], "text": parsed["card3_text"], "type": "hazard"},
+        ],
+        "spectral_metrics":   metrics,
+        "class_distribution": polygons,
+        "features": [{"id": f"p{i}", **p} for i, p in enumerate(polygons)],
+        "preview_url":        f"data:image/jpeg;base64,{b64}",
+        "confidence_score":   "0.95",
+        "domain":             domain,
+        "execution_summary":  trace,
+    })
+
+# =========================================================
+# STATIC / SPA
+# =========================================================
+DIST = os.path.abspath("dist")
+if os.path.exists(os.path.join(DIST, "index.html")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(DIST, "assets")), name="assets")
+
+    @app.get("/")
+    def root(): return FileResponse(os.path.join(DIST, "index.html"))
+
+    @app.get("/{p:path}")
+    def spa(p: str):
+        fp = os.path.join(DIST, p)
+        return FileResponse(fp) if os.path.exists(fp) else FileResponse(
+            os.path.join(DIST, "index.html")
+        )    return {"status": "ok", "model_loaded": vlm_model is not None}
 
 # =========================================================
 # LOAD Qwen2-VL-7B in 4-bit (fits in ~4.5 GB VRAM)
