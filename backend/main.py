@@ -414,12 +414,48 @@ async def analyze(
         "execution_summary": execution_trace
     })
 
-DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dist"))
-if os.path.exists(DIST_DIR):
-    app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
+# =========================================================
+# 5. ROBUST STATIC SPA SERVING (Explicit HTML Delivery)
+# =========================================================
+possible_dist_dirs = [
+    os.path.abspath("dist"),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dist")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "dist")),
+    "/content/SatQueryAI/dist"
+]
 
+DIST_DIR = None
+for candidate in possible_dist_dirs:
+    if os.path.exists(os.path.join(candidate, "index.html")):
+        DIST_DIR = candidate
+        break
+
+if DIST_DIR:
+    print(f"📂 Resolved Frontend Build Directory: {DIST_DIR}")
+    assets_dir = os.path.join(DIST_DIR, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    # 1. Explicitly serve index.html for GET /
+    @app.get("/")
+    async def serve_root():
+        return FileResponse(
+            os.path.join(DIST_DIR, "index.html"),
+            media_type="text/html"
+        )
+
+    # 2. Catch-all for SPA subroutes
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         file_path = os.path.join(DIST_DIR, full_path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse
+            return FileResponse(file_path)
+        return FileResponse(
+            os.path.join(DIST_DIR, "index.html"),
+            media_type="text/html"
+        )
+else:
+    print("❌ ERROR: Could not find 'dist/index.html'! Did 'npm run build' succeed?")
+    @app.get("/")
+    def missing_frontend():
+        return HTMLResponse("<h1>Frontend build missing. Run 'npm run build' first!</h1>", status_code=500)
