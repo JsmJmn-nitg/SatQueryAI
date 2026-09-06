@@ -8,11 +8,16 @@ import {
   Maximize2,
   Image as ImageIcon,
   Radar,
+<<<<<<< HEAD
   CopyCheck,
   FolderSync,
   Sun,
   Moon,
   CheckCircle2,
+=======
+  Sun,
+  Moon,
+>>>>>>> 737f43b (second commit)
   UploadCloud,
   X,
   MessageSquare,
@@ -32,7 +37,10 @@ export default function SatQueryApp() {
   const [showOverlays, setShowOverlays] = useState(true);
   const [showTraceModal, setShowTraceModal] = useState(false);
 
+<<<<<<< HEAD
   // Upload file state
+=======
+>>>>>>> 737f43b (second commit)
   const [image1, setImage1] = useState(null);
   const [image2, setImage2] = useState(null);
   const [fileDetails1, setFileDetails1] = useState({
@@ -41,7 +49,10 @@ export default function SatQueryApp() {
     dimensions: "1024×1024"
   });
 
+<<<<<<< HEAD
   // Analysis result state matching Screenshot 1 & 2
+=======
+>>>>>>> 737f43b (second commit)
   const [analysisResult, setAnalysisResult] = useState({
     title: "Coastal Land-Cover Overview",
     summary:
@@ -119,7 +130,10 @@ export default function SatQueryApp() {
     }
   };
 
+<<<<<<< HEAD
   // Submit Query to Backend
+=======
+>>>>>>> 737f43b (second commit)
   const handleExecuteQuery = async () => {
     setLoading(true);
     const formData = new FormData();
@@ -129,14 +143,22 @@ export default function SatQueryApp() {
     if (image2) formData.append("image2", image2);
 
     try {
+<<<<<<< HEAD
+=======
+      // Relative path: routes directly through the FastAPI server and tunnel
+>>>>>>> 737f43b (second commit)
       const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData
       });
 
+<<<<<<< HEAD
       if (!response.ok) {
         throw new Error("Backend processing failed");
       }
+=======
+      if (!response.ok) throw new Error("Backend processing error");
+>>>>>>> 737f43b (second commit)
 
       const data = await response.json();
       setAnalysisResult({
@@ -155,6 +177,7 @@ export default function SatQueryApp() {
         executionTrace: data.execution_summary
       });
     } catch (err) {
+<<<<<<< HEAD
       console.warn("Backend unavailable, demonstrating responsive client state:", err);
       // Seamless mock state continuation for hackathon presentation if backend is starting
       if (activeTab === "Autofetch") {
@@ -174,6 +197,9 @@ export default function SatQueryApp() {
           }
         }));
       }
+=======
+      console.warn("Backend unavailable or in transition:", err);
+>>>>>>> 737f43b (second commit)
     } finally {
       setLoading(false);
     }
@@ -181,12 +207,19 @@ export default function SatQueryApp() {
 
   return (
     <div className={`min-h-screen flex ${darkMode ? "bg-[#090D1A] text-slate-100" : "bg-[#F8FAFC] text-slate-800"}`}>
+<<<<<<< HEAD
       {/* ───────────────── LEFT SIDEBAR ───────────────── */}
+=======
+      {/* Sidebar */}
+>>>>>>> 737f43b (second commit)
       <aside className={`w-64 border-r flex flex-col justify-between p-4 ${
         darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200"
       }`}>
         <div>
+<<<<<<< HEAD
           {/* Logo & Header */}
+=======
+>>>>>>> 737f43b (second commit)
           <div className="flex items-center gap-3 px-2 py-3 mb-6">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
               <Sparkles className="w-5 h-5 text-white" />
@@ -199,7 +232,10 @@ export default function SatQueryApp() {
             </div>
           </div>
 
+<<<<<<< HEAD
           {/* New Query Button */}
+=======
+>>>>>>> 737f43b (second commit)
           <button
             onClick={() => {
               setQuery("");
@@ -210,6 +246,7 @@ export default function SatQueryApp() {
             <span className="text-lg leading-none">+</span> New Query
           </button>
 
+<<<<<<< HEAD
           {/* Nav Items */}
           <nav className="space-y-1.5">
             <button
@@ -217,6 +254,12 @@ export default function SatQueryApp() {
                 darkMode
                   ? "bg-[#18213F] text-indigo-300"
                   : "bg-indigo-50 text-indigo-600"
+=======
+          <nav className="space-y-1.5">
+            <button
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                darkMode ? "bg-[#18213F] text-indigo-300" : "bg-indigo-50 text-indigo-600"
+>>>>>>> 737f43b (second commit)
               }`}
             >
               <Home className="w-4 h-4" /> Home
@@ -224,18 +267,26 @@ export default function SatQueryApp() {
             <button
               onClick={() => setShowTraceModal(true)}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+<<<<<<< HEAD
                 darkMode
                   ? "text-slate-400 hover:bg-[#151D37] hover:text-slate-200"
                   : "text-slate-600 hover:bg-slate-100"
+=======
+                darkMode ? "text-slate-400 hover:bg-[#151D37] hover:text-slate-200" : "text-slate-600 hover:bg-slate-100"
+>>>>>>> 737f43b (second commit)
               }`}
             >
               <Terminal className="w-4 h-4" /> Execution Trace
             </button>
             <button
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+<<<<<<< HEAD
                 darkMode
                   ? "text-slate-400 hover:bg-[#151D37] hover:text-slate-200"
                   : "text-slate-600 hover:bg-slate-100"
+=======
+                darkMode ? "text-slate-400 hover:bg-[#151D37] hover:text-slate-200" : "text-slate-600 hover:bg-slate-100"
+>>>>>>> 737f43b (second commit)
               }`}
             >
               <History className="w-4 h-4" /> History
@@ -243,7 +294,10 @@ export default function SatQueryApp() {
           </nav>
         </div>
 
+<<<<<<< HEAD
         {/* Footer Status & Theme Toggle */}
+=======
+>>>>>>> 737f43b (second commit)
         <div className="space-y-3 pt-4 border-t border-inherit">
           <div className={`p-3 rounded-xl border flex items-center gap-2.5 ${
             darkMode ? "bg-[#0F162E] border-[#1E294B]" : "bg-slate-50 border-slate-200"
@@ -260,9 +314,13 @@ export default function SatQueryApp() {
           <button
             onClick={() => setDarkMode(!darkMode)}
             className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs font-medium ${
+<<<<<<< HEAD
               darkMode
                 ? "bg-[#0F162E] border-[#1E294B] text-slate-300 hover:border-slate-600"
                 : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+=======
+              darkMode ? "bg-[#0F162E] border-[#1E294B] text-slate-300 hover:border-slate-600" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+>>>>>>> 737f43b (second commit)
             }`}
           >
             <div className="flex items-center gap-2">
@@ -274,9 +332,14 @@ export default function SatQueryApp() {
         </div>
       </aside>
 
+<<<<<<< HEAD
       {/* ───────────────── MAIN CONTENT CANVAS ───────────────── */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto">
         {/* Top Header */}
+=======
+      {/* Main Canvas */}
+      <main className="flex-1 flex flex-col h-screen overflow-y-auto">
+>>>>>>> 737f43b (second commit)
         <header className={`h-16 border-b flex items-center justify-end px-8 gap-5 ${
           darkMode ? "border-[#1A233D] bg-[#090D1A]" : "border-slate-200 bg-white"
         }`}>
@@ -302,6 +365,7 @@ export default function SatQueryApp() {
           </div>
         </header>
 
+<<<<<<< HEAD
         {/* Workspace Body */}
         <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
           {/* Query & Interaction Hero Card */}
@@ -311,6 +375,12 @@ export default function SatQueryApp() {
               : "bg-white border-slate-200 shadow-sm"
           }`}>
             {/* Celestial Planetary Artwork (Top Right Background) */}
+=======
+        <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
+          <div className={`relative p-6 rounded-2xl border overflow-hidden ${
+            darkMode ? "bg-gradient-to-b from-[#11172E] to-[#0D1224] border-[#1C2648]" : "bg-white border-slate-200 shadow-sm"
+          }`}>
+>>>>>>> 737f43b (second commit)
             <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none opacity-40 md:opacity-90">
               <div className="relative w-64 h-36 flex items-center justify-center">
                 <div className="absolute w-52 h-20 border border-indigo-500/20 rounded-[100%] rotate-[-18deg]" />
@@ -319,7 +389,10 @@ export default function SatQueryApp() {
               </div>
             </div>
 
+<<<<<<< HEAD
             {/* Greeting */}
+=======
+>>>>>>> 737f43b (second commit)
             <div className="relative z-10 mb-4">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 Good morning! <span className="text-2xl">👋</span>
@@ -329,7 +402,10 @@ export default function SatQueryApp() {
               </h2>
             </div>
 
+<<<<<<< HEAD
             {/* Prompt Input Box */}
+=======
+>>>>>>> 737f43b (second commit)
             <div className="relative z-10 max-w-3xl mb-5">
               <div className={`flex items-center rounded-2xl border p-1.5 focus-within:ring-2 focus-within:ring-indigo-500 transition-all ${
                 darkMode ? "bg-[#090D1C] border-[#222E54]" : "bg-slate-50 border-slate-200"
@@ -354,7 +430,10 @@ export default function SatQueryApp() {
               </div>
             </div>
 
+<<<<<<< HEAD
             {/* Mode Pills Selector (Single, Optical+SAR, Change, Autofetch) */}
+=======
+>>>>>>> 737f43b (second commit)
             <div className="relative z-10 flex flex-wrap items-center gap-3">
               {[
                 { id: "Single Image", icon: ImageIcon, label: "Single Image" },
@@ -385,7 +464,10 @@ export default function SatQueryApp() {
               })}
             </div>
 
+<<<<<<< HEAD
             {/* Upload Zone / Autofetch Banner Conditional Panel */}
+=======
+>>>>>>> 737f43b (second commit)
             <div className="mt-5 pt-4 border-t border-inherit">
               {activeTab === "Autofetch" ? (
                 <div className={`p-4 rounded-xl border flex items-start gap-3 ${
@@ -403,7 +485,10 @@ export default function SatQueryApp() {
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-4 items-center">
+<<<<<<< HEAD
                   {/* Image 1 Card / Dropzone */}
+=======
+>>>>>>> 737f43b (second commit)
                   <div
                     onClick={() => fileInputRef1.current.click()}
                     className={`relative w-48 h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors p-3 ${
@@ -419,7 +504,11 @@ export default function SatQueryApp() {
                     />
                     <img
                       src={analysisResult.previewUrl}
+<<<<<<< HEAD
                       alt="Thumbnail preview"
+=======
+                      alt="Thumbnail"
+>>>>>>> 737f43b (second commit)
                       className="absolute inset-0 w-full h-full object-cover rounded-xl opacity-20"
                     />
                     <button
@@ -439,7 +528,10 @@ export default function SatQueryApp() {
                     </span>
                   </div>
 
+<<<<<<< HEAD
                   {/* Image 2 Card / Dropzone (For Paired Modes) */}
+=======
+>>>>>>> 737f43b (second commit)
                   {(activeTab === "Optical + SAR" || activeTab === "Change Detection") && (
                     <div
                       onClick={() => fileInputRef2.current.click()}
@@ -472,17 +564,25 @@ export default function SatQueryApp() {
             </div>
           </div>
 
+<<<<<<< HEAD
           {/* ───────────────── RESULTS / ANALYSIS SECTION ───────────────── */}
           <div className={`p-6 rounded-2xl border ${
             darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"
           }`}>
             {/* Answer Badge */}
+=======
+          {/* Results Panel */}
+          <div className={`p-6 rounded-2xl border ${
+            darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"
+          }`}>
+>>>>>>> 737f43b (second commit)
             <div className="flex items-center gap-2 mb-4">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                 <MessageSquare className="w-3.5 h-3.5" /> Answer
               </span>
             </div>
 
+<<<<<<< HEAD
             {/* Split Content: Left Insights / Right Interactive Canvas */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               {/* Left Column: Summary & Grounded Feature List */}
@@ -492,14 +592,27 @@ export default function SatQueryApp() {
                   <p className={`text-xs mt-1.5 leading-relaxed ${
                     darkMode ? "text-slate-400" : "text-slate-600"
                   }`}>
+=======
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-5 space-y-5">
+                <div>
+                  <h3 className="text-lg font-bold">{analysisResult.title}</h3>
+                  <p className={`text-xs mt-1.5 leading-relaxed ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
+>>>>>>> 737f43b (second commit)
                     {analysisResult.summary}
                   </p>
                 </div>
 
+<<<<<<< HEAD
                 {/* Grounded Segment Items */}
                 <div className="space-y-3.5">
                   {analysisResult.features.map((item) => (
                     <div key={item.id} className="flex items-start gap-3 text-xs group">
+=======
+                <div className="space-y-3.5">
+                  {analysisResult.features.map((item) => (
+                    <div key={item.id} className="flex items-start gap-3 text-xs">
+>>>>>>> 737f43b (second commit)
                       <div
                         className="w-5 h-5 rounded-md mt-0.5 flex items-center justify-center shrink-0"
                         style={{ backgroundColor: `${item.color}25`, color: item.color }}
@@ -516,7 +629,10 @@ export default function SatQueryApp() {
                   ))}
                 </div>
 
+<<<<<<< HEAD
                 {/* Confidence Score Pill */}
+=======
+>>>>>>> 737f43b (second commit)
                 <div className="pt-2 flex items-center gap-2.5">
                   <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
                     Confidence Score
@@ -527,6 +643,7 @@ export default function SatQueryApp() {
                 </div>
               </div>
 
+<<<<<<< HEAD
               {/* Right Column: Interactive Satellite Viewer + Polygons */}
               <div className="lg:col-span-7 flex flex-col md:flex-row gap-4">
                 {/* Visual Canvas Container */}
@@ -534,6 +651,12 @@ export default function SatQueryApp() {
                   darkMode ? "border-[#1C2648] bg-black" : "border-slate-200 bg-slate-100"
                 }`}>
                   {/* Floating Action Controls (Zoom / Layers / Fullscreen) */}
+=======
+              <div className="lg:col-span-7 flex flex-col md:flex-row gap-4">
+                <div className={`relative flex-1 rounded-2xl overflow-hidden border ${
+                  darkMode ? "border-[#1C2648] bg-black" : "border-slate-200 bg-slate-100"
+                }`}>
+>>>>>>> 737f43b (second commit)
                   <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg">
                     <button
                       onClick={() => setZoomLevel((z) => Math.min(z + 0.2, 2.0))}
@@ -567,18 +690,28 @@ export default function SatQueryApp() {
                     </button>
                   </div>
 
+<<<<<<< HEAD
                   {/* Satellite Image + SVG Overlay Container */}
+=======
+>>>>>>> 737f43b (second commit)
                   <div
                     className="relative w-full h-[360px] overflow-hidden transition-transform duration-200"
                     style={{ transform: `scale(${zoomLevel})`, transformOrigin: "center center" }}
                   >
                     <img
                       src={analysisResult.previewUrl}
+<<<<<<< HEAD
                       alt="Satellite preview"
                       className="w-full h-full object-cover select-none"
                     />
 
                     {/* Grounded Segmentation Vector Polygons */}
+=======
+                      alt="Satellite Preview"
+                      className="w-full h-full object-cover select-none"
+                    />
+
+>>>>>>> 737f43b (second commit)
                     {showOverlays && (
                       <svg
                         className="absolute inset-0 w-full h-full pointer-events-none"
@@ -593,7 +726,10 @@ export default function SatQueryApp() {
                             stroke={feature.color}
                             strokeWidth="3.5"
                             strokeDasharray={feature.id === "roads" ? "6,4" : "none"}
+<<<<<<< HEAD
                             className="transition-all duration-300 hover:opacity-80"
+=======
+>>>>>>> 737f43b (second commit)
                           />
                         ))}
                       </svg>
@@ -601,7 +737,10 @@ export default function SatQueryApp() {
                   </div>
                 </div>
 
+<<<<<<< HEAD
                 {/* Detected Objects Legend */}
+=======
+>>>>>>> 737f43b (second commit)
                 <div className={`p-4 rounded-xl border w-full md:w-44 shrink-0 ${
                   darkMode ? "bg-[#090D1C] border-[#1C2648]" : "bg-slate-50 border-slate-200"
                 }`}>
@@ -626,7 +765,11 @@ export default function SatQueryApp() {
         </div>
       </main>
 
+<<<<<<< HEAD
       {/* ───────────────── AUDITABLE EXECUTION TRACE MODAL ───────────────── */}
+=======
+      {/* Execution Trace Modal */}
+>>>>>>> 737f43b (second commit)
       {showTraceModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className={`w-full max-w-2xl rounded-2xl border p-6 shadow-2xl ${
@@ -635,7 +778,11 @@ export default function SatQueryApp() {
             <div className="flex items-center justify-between pb-4 border-b border-inherit">
               <div className="flex items-center gap-2">
                 <Terminal className="w-5 h-5 text-indigo-400" />
+<<<<<<< HEAD
                 <h3 className="font-bold text-sm">Auditable Execution Trace (Hackathon Evaluation)</h3>
+=======
+                <h3 className="font-bold text-sm">Auditable Execution Trace</h3>
+>>>>>>> 737f43b (second commit)
               </div>
               <button
                 onClick={() => setShowTraceModal(false)}
@@ -644,10 +791,14 @@ export default function SatQueryApp() {
                 <X className="w-4 h-4" />
               </button>
             </div>
+<<<<<<< HEAD
             <p className={`text-xs mt-3 ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
               Observable trace of autonomous model routing, parameter configurations, and preprocessing.
             </p>
             <pre className={`mt-3 p-4 rounded-xl text-[11px] font-mono overflow-x-auto ${
+=======
+            <pre className={`mt-4 p-4 rounded-xl text-[11px] font-mono overflow-x-auto ${
+>>>>>>> 737f43b (second commit)
               darkMode ? "bg-[#070A14] text-emerald-400" : "bg-slate-900 text-emerald-300"
             }`}>
               {JSON.stringify(analysisResult.executionTrace, null, 2)}
