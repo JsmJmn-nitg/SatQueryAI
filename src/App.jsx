@@ -20,139 +20,93 @@ import {
   Download,
   Bot,
   BarChart3,
-  Activity,
-  CheckCircle2,
-  Cpu
+  Loader2
 } from "lucide-react";
 
 export default function SatQueryApp() {
   const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState("Single Image");
-  const [query, setQuery] = useState("What are the main land cover types in this image?");
+  const [query, setQuery] = useState("Analyze this imagery and describe all visible features, hazards, and land cover.");
   const [loading, setLoading] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showOverlays, setShowOverlays] = useState(true);
   const [showTraceModal, setShowTraceModal] = useState(false);
-  const [responseTab, setResponseTab] = useState("executive"); // "executive" | "consensus" | "analytics"
+  const [responseTab, setResponseTab] = useState("executive");
 
   const [image1, setImage1] = useState(null);
   const [image2, setImage2] = useState(null);
-  const [file1Info, setFile1Info] = useState({ name: "optical_image.tif", size: "10.4 MB", res: "1024×1024" });
-  const [file2Info, setFile2Info] = useState(null);
+  const [file1Name, setFile1Name] = useState("No image selected");
+  const [file2Name, setFile2Name] = useState(null);
 
   const [analysisResult, setAnalysisResult] = useState({
-    title: "Agentic Analysis: Single Image VQA",
-    executiveSummary:
-      "Dual-model consensus confirmed: The imagery depicts a coastal settlement characterized by high built-up density along the littoral margin, directly buffered by agricultural vegetation and open ocean water bodies.",
-    confidenceScore: "0.89",
-    previewUrl:
-      "https://images.unsplash.com/photo-1524813686514-a57563d77d66?auto=format&fit=crop&w=1200&q=80",
-    consensus: {
-      geochat_specialist:
-        "GeoChat RS-Specialist: Multispectral NIR absorption confirms deep marine water in the western quadrant (NDWI > 0.45). Red-edge reflectance indicates healthy cropland inland.",
-      generic_vlm:
-        "Generic VLM Grounder: Structural grid patterns identify high-density residential and arterial road networks intersecting the terrain from north to south."
-    },
+    title: "SatQuery AI - Standby",
+    executiveSummary: "Upload any satellite GeoTIFF or standard image (wildfire, flood, city, farmland) and click Send. The AI will inspect the pixels and generate a custom report.",
+    confidenceScore: "0.92",
+    previewUrl: "https://images.unsplash.com/photo-1524813686514-a57563d77d66?auto=format&fit=crop&w=1200&q=80",
     classDistribution: [
-      { label: "Built-up Area", percentage: 36, color: "#EF4444" },
-      { label: "Water Body", percentage: 26, color: "#0EA5E9" },
-      { label: "Vegetation", percentage: 22, color: "#10B981" },
-      { label: "Roads / Infra", percentage: 10, color: "#F59E0B" },
-      { label: "Bare Ground", percentage: 6, color: "#A855F7" }
+      { name: "Awaiting Image", percentage: 100, color: "#6366F1" }
     ],
     spectralMetrics: {
-      ndwi_water_index: "+0.48 (Water Detected)",
-      ndvi_veg_vigor: "+0.62 (Healthy Canopy)",
-      sar_roughness: "-14.2 dB (Specular/Smooth)"
+      "Status": "Ready for Analysis",
+      "Format": "GeoTIFF / TIFF / PNG / JPG",
+      "VLM Engine": "Qwen2.5-VL / BLIP Multimodal"
     },
-    features: [
-      { id: "built-up", name: "Built-up area", desc: "Dense urban settlement along the coast and inland.", color: "#EF4444", points: "550,420 680,410 660,650 560,640" },
-      { id: "water", name: "Water body", desc: "Sea/ocean on the left side and small inland water bodies.", color: "#0EA5E9", points: "20,50 180,60 160,850 10,850" },
-      { id: "vegetation", name: "Vegetation", desc: "Green patches of dense vegetation and agricultural fields.", color: "#10B981", points: "220,70 360,60 340,300 230,310" },
-      { id: "roads", name: "Roads", desc: "Major road network connecting urban areas.", color: "#F59E0B", points: "200,670 420,680 780,490 690,470 210,650" },
-      { id: "bare-land", name: "Bare land", desc: "Some areas of exposed soil or sparse vegetation.", color: "#A855F7", points: "690,690 780,680 770,820 680,810" }
-    ],
-    executionTrace: {
-      task: "single_image_grounded_vqa",
-      controller: "SatQuery-Ensemble-v3",
-      inputs: { n_images: 1, mode: "Single Image", format: "GeoTIFF" },
-      agents_invoked: [
-        { name: "GeoChat-7B (Remote Sensing Specialist)", role: "Spectral & Polarimetric Analysis" },
-        { name: "Generic Visual Grounder", role: "Spatial Geometry & Object Layout" },
-        { name: "Chief Agent Orchestrator", role: "Ensemble Consensus & Report Generation" }
-      ],
-      confidence_score: 0.89,
-      notes: ["Dual-model consensus confirmed", "Auditable execution trace"]
-    }
+    features: [],
+    executionTrace: {}
   });
 
   const fileInputRef1 = useRef(null);
   const fileInputRef2 = useRef(null);
 
-  const presets = [
-    { label: "📍 Coastal Land-Cover (VQA)", mode: "Single Image", q: "Describe the land-cover and major objects visible in this image." },
-    { label: "🛰️ Optical + SAR Fusion", mode: "Optical + SAR", q: "Use the optical and SAR images together to identify built-up and water-covered regions." },
-    { label: "⏱️ LEVIR-CD Urban Change", mode: "Change Detection", q: "What changed between these two dates, and where did the change occur?" },
-    { label: "✨ Autofetch: Valencia Floods", mode: "Autofetch", q: "Assess flood inundation in Valencia coastal basin after October 2024 using SAR and optical data." }
-  ];
-
-  const applyPreset = (preset) => {
-    setActiveTab(preset.mode);
-    setQuery(preset.q);
-  };
-
   const handleFileUpload = (e, target) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const info = { name: file.name, size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`, res: "1024×1024" };
     if (target === 1) {
       setImage1(file);
-      setFile1Info(info);
-      const url = URL.createObjectURL(file);
-      setAnalysisResult((prev) => ({ ...prev, previewUrl: url }));
+      setFile1Name(file.name);
+      // If it's a regular PNG/JPG, we can preview immediately; for TIFF, we wait for backend normalization
+      if (!file.name.toLowerCase().endsWith(".tif") && !file.name.toLowerCase().endsWith(".tiff")) {
+        setAnalysisResult((prev) => ({ ...prev, previewUrl: URL.createObjectURL(file) }));
+      }
     } else {
       setImage2(file);
-      setFile2Info(info);
+      setFile2Name(file.name);
     }
   };
 
   const executeAnalysis = async () => {
+    if (!image1) {
+      alert("Please select a GeoTIFF or image first!");
+      return;
+    }
+
     setLoading(true);
     const formData = new FormData();
     formData.append("mode", activeTab);
     formData.append("query", query);
-    if (image1) formData.append("image1", image1);
+    formData.append("image1", image1);
     if (image2) formData.append("image2", image2);
 
     try {
       const res = await fetch("/api/analyze", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("API call failed");
+      if (!res.ok) throw new Error("Backend error: " + res.statusText);
       const data = await res.json();
       setAnalysisResult({
         title: data.title,
         executiveSummary: data.executive_summary,
-        confidenceScore: data.confidence_score.toString(),
+        confidenceScore: data.confidence_score,
         previewUrl: data.preview_url,
         features: data.features,
-        consensus: data.consensus,
         classDistribution: data.class_distribution,
         spectralMetrics: data.spectral_metrics,
         executionTrace: data.execution_summary
       });
     } catch (err) {
-      console.warn("Backend unavailable, using dynamic fallback:", err);
+      alert("Error processing image: " + err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const downloadAuditReport = () => {
-    const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(analysisResult.executionTrace, null, 2));
-    const a = document.createElement("a");
-    a.href = jsonStr;
-    a.download = `SatQuery_Execution_Report_${Date.now()}.json`;
-    a.click();
   };
 
   return (
@@ -163,582 +117,209 @@ export default function SatQueryApp() {
       }`}>
         <div>
           <div className="flex items-center gap-3 px-2 py-3 mb-6">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center shadow-lg">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
               <h1 className="font-bold text-base tracking-tight leading-none">SatQuery AI</h1>
-              <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
-                Vision–Language Assistant
-              </span>
+              <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-500"}`}>Real Vision Assistant</span>
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              setQuery("");
-              setImage2(null);
-              setFile2Info(null);
-            }}
-            className="w-full mb-6 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 hover:opacity-95 transition-all"
-          >
-            <span className="text-lg leading-none">+</span> New Query
-          </button>
-
           <nav className="space-y-1.5">
-            <button className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+            <button className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium ${
               darkMode ? "bg-[#18213F] text-indigo-300" : "bg-indigo-50 text-indigo-600"
             }`}>
               <Home className="w-4 h-4" /> Home
             </button>
             <button
               onClick={() => setShowTraceModal(true)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                darkMode ? "text-slate-400 hover:bg-[#151D37] hover:text-slate-200" : "text-slate-600 hover:bg-slate-100"
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium ${
+                darkMode ? "text-slate-400 hover:bg-[#151D37]" : "text-slate-600 hover:bg-slate-100"
               }`}
             >
               <Terminal className="w-4 h-4 text-emerald-400" /> Execution Trace
             </button>
-            <button
-              onClick={downloadAuditReport}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                darkMode ? "text-slate-400 hover:bg-[#151D37] hover:text-slate-200" : "text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              <Download className="w-4 h-4 text-indigo-400" /> Export Audit JSON
-            </button>
           </nav>
         </div>
 
-        <div className="space-y-3 pt-4 border-t border-inherit">
-          <div className={`p-3 rounded-xl border flex items-center gap-2.5 ${
-            darkMode ? "bg-[#0F162E] border-[#1E294B]" : "bg-slate-50 border-slate-200"
-          }`}>
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <div>
-              <p className="text-xs font-semibold">Ensemble Engine</p>
-              <p className={`text-[11px] ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
-                GeoChat + Generic VLM Active
-              </p>
-            </div>
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs font-medium ${
+            darkMode ? "bg-[#0F162E] border-[#1E294B] text-slate-300" : "bg-white border-slate-200 text-slate-700"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {darkMode ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
+            <span>{darkMode ? "Dark Mode" : "Light Mode"}</span>
           </div>
-
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs font-medium ${
-              darkMode ? "bg-[#0F162E] border-[#1E294B] text-slate-300 hover:border-slate-600" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              {darkMode ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
-              <span>{darkMode ? "Dark Mode" : "Light Mode"}</span>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-          </button>
-        </div>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+        </button>
       </aside>
 
-      {/* Main Screen */}
+      {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto">
-        <header className={`h-16 border-b flex items-center justify-between px-8 ${
-          darkMode ? "border-[#1A233D] bg-[#090D1A]" : "border-slate-200 bg-white"
-        }`}>
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono flex items-center gap-1.5">
-              <Bot className="w-3.5 h-3.5 text-indigo-400" />
-              Multi-Agent Pipeline: GeoChat-7B ⟷ General VLM ⟷ Synthesizer
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 rounded-lg border ${
-                darkMode ? "border-[#1E294B] text-slate-300 hover:bg-[#141C38]" : "border-slate-200 text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            <div className="flex items-center gap-2 pl-3 border-l border-inherit">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-semibold text-xs flex items-center justify-center">
-                U
-              </div>
-              <span className="text-xs font-medium">Judge Demo</span>
-            </div>
-          </div>
-        </header>
-
         <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
-          {/* Query & Controls Container */}
-          <div className={`relative p-6 rounded-2xl border overflow-hidden ${
-            darkMode ? "bg-gradient-to-b from-[#11172E] to-[#0D1224] border-[#1C2648]" : "bg-white border-slate-200 shadow-sm"
+          {/* Query Box */}
+          <div className={`p-6 rounded-2xl border ${
+            darkMode ? "bg-[#0D1224] border-[#1C2648]" : "bg-white border-slate-200 shadow-sm"
           }`}>
-            <div className="relative z-10 mb-4">
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                Good morning! <span className="text-2xl">👋</span>
-                <span className={`text-sm font-normal ml-2 ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
-                  Ask anything about your remote sensing imagery.
-                </span>
-              </h2>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              SatQuery Remote Sensing AI <span className="text-sm font-normal text-slate-400">• Multi-format GeoTIFF & Optical VLM</span>
+            </h2>
+
+            <div className={`flex items-center rounded-2xl border p-1.5 mb-4 ${
+              darkMode ? "bg-[#090D1C] border-[#222E54]" : "bg-slate-50 border-slate-200"
+            }`}>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && executeAnalysis()}
+                placeholder="Ask anything about the uploaded satellite image..."
+                className={`w-full bg-transparent px-4 py-2.5 text-sm outline-none ${darkMode ? "text-white" : "text-slate-900"}`}
+              />
+              <button
+                onClick={executeAnalysis}
+                disabled={loading}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl shadow font-semibold text-xs flex items-center gap-2"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {loading ? "Processing..." : "Analyze"}
+              </button>
             </div>
 
-            {/* Prompt Input Box */}
-            <div className="relative z-10 max-w-3xl mb-3">
-              <div className={`flex items-center rounded-2xl border p-1.5 focus-within:ring-2 focus-within:ring-indigo-500 transition-all ${
-                darkMode ? "bg-[#090D1C] border-[#222E54]" : "bg-slate-50 border-slate-200"
-              }`}>
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && executeAnalysis()}
-                  placeholder='Try: "What are the main land cover types in this image?"'
-                  className={`w-full bg-transparent px-4 py-2.5 text-sm outline-none placeholder:text-slate-500 ${
-                    darkMode ? "text-white" : "text-slate-900"
-                  }`}
-                />
+            {/* Mode selection */}
+            <div className="flex flex-wrap gap-3 mb-4">
+              {["Single Image", "Optical + SAR", "Change Detection", "Autofetch"].map((tab) => (
                 <button
-                  onClick={executeAnalysis}
-                  disabled={loading}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-xl shadow-md transition-all flex items-center justify-center"
-                >
-                  <Send className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Demo Presets */}
-            <div className="relative z-10 flex flex-wrap gap-2 mb-4">
-              <span className={`text-[11px] self-center mr-1 ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
-                Quick Presets:
-              </span>
-              {presets.map((p, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => applyPreset(p)}
-                  className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                    darkMode
-                      ? "border-[#202C52] bg-[#0A0E1F] text-slate-300 hover:border-indigo-500 hover:text-white"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-indigo-400"
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 rounded-xl text-xs font-medium border ${
+                    activeTab === tab
+                      ? darkMode ? "bg-[#1C2448] border-indigo-500 text-white" : "bg-indigo-50 border-indigo-400 text-indigo-700"
+                      : darkMode ? "bg-[#0F152C] border-[#1C2648] text-slate-400" : "bg-white border-slate-200 text-slate-600"
                   }`}
                 >
-                  {p.label}
+                  {tab}
                 </button>
               ))}
             </div>
 
-            {/* Modality Mode Tabs */}
-            <div className="relative z-10 flex flex-wrap items-center gap-3">
-              {[
-                { id: "Single Image", icon: ImageIcon, label: "Single Image" },
-                { id: "Optical + SAR", icon: Radar, label: "Optical + SAR" },
-                { id: "Change Detection", icon: Layers, label: "Change Detection" },
-                { id: "Autofetch", icon: Sparkles, label: "Autofetch" }
-              ].map((tab) => {
-                const Icon = tab.icon;
-                const isSelected = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      isSelected
-                        ? darkMode
-                          ? "bg-[#1C2448] border-indigo-500 text-white shadow-md shadow-indigo-500/10"
-                          : "bg-indigo-50 border-indigo-400 text-indigo-700"
-                        : darkMode
-                        ? "bg-[#0F152C] border-[#1C2648] text-slate-400 hover:text-slate-200"
-                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-indigo-400" : ""}`} />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Upload Area / Autofetch Card */}
-            <div className="mt-5 pt-4 border-t border-inherit">
-              {activeTab === "Autofetch" ? (
-                <div className={`p-4 rounded-xl border flex items-start gap-3 ${
-                  darkMode ? "bg-[#090D1C]/80 border-[#1E294B]" : "bg-indigo-50/50 border-indigo-100"
-                }`}>
-                  <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-indigo-400">Autofetch Mode Active</h4>
-                    <p className={`text-xs mt-0.5 ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
-                      Describe your area of interest (e.g. <i>"Assess flood damage in Valencia after October 2024"</i>).
-                      SatQuery AI autonomously determines coordinates, retrieves Sentinel-1 SAR and Sentinel-2 optical bands, and executes the multi-model ensemble.
-                    </p>
-                  </div>
+            {/* Upload Buttons */}
+            <div className="flex gap-4 items-center pt-4 border-t border-inherit">
+              <div
+                onClick={() => fileInputRef1.current.click()}
+                className={`px-5 py-4 rounded-xl border-2 border-dashed flex items-center gap-3 cursor-pointer ${
+                  darkMode ? "border-[#222E54] hover:border-indigo-500 bg-[#090D1C]" : "border-slate-300 hover:border-indigo-400 bg-slate-50"
+                }`}
+              >
+                <input ref={fileInputRef1} type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" onChange={(e) => handleFileUpload(e, 1)} className="hidden" />
+                <UploadCloud className="w-5 h-5 text-indigo-400" />
+                <div>
+                  <p className="text-xs font-semibold">{file1Name}</p>
+                  <p className="text-[10px] text-slate-500">Click to upload Primary GeoTIFF / TIFF / PNG</p>
                 </div>
-              ) : (
-                <div className="flex flex-wrap gap-4 items-center">
-                  {/* Slot 1 */}
-                  <div
-                    onClick={() => fileInputRef1.current.click()}
-                    className={`relative w-48 h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors p-3 ${
-                      darkMode ? "border-[#222E54] hover:border-indigo-500 bg-[#090D1C]" : "border-slate-300 hover:border-indigo-400 bg-slate-50"
-                    }`}
-                  >
-                    <input
-                      ref={fileInputRef1}
-                      type="file"
-                      accept=".tif,.tiff,.png,.jpg,.jpeg"
-                      onChange={(e) => handleFileUpload(e, 1)}
-                      className="hidden"
-                    />
-                    <img
-                      src={analysisResult.previewUrl}
-                      alt="Thumbnail"
-                      className="absolute inset-0 w-full h-full object-cover rounded-xl opacity-20"
-                    />
-                    <p className="text-xs font-semibold text-center z-10 truncate max-w-[140px]">
-                      {file1Info.name}
-                    </p>
-                    <span className={`text-[10px] z-10 ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
-                      {file1Info.size} • {file1Info.res}
-                    </span>
-                  </div>
+              </div>
 
-                  {/* Slot 2 (Paired Modes) */}
-                  {(activeTab === "Optical + SAR" || activeTab === "Change Detection") && (
-                    <div
-                      onClick={() => fileInputRef2.current.click()}
-                      className={`w-48 h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer p-3 transition-colors ${
-                        image2
-                          ? "border-emerald-500 bg-emerald-500/10"
-                          : darkMode
-                          ? "border-[#222E54] hover:border-indigo-500 bg-[#090D1C]"
-                          : "border-slate-300 hover:border-indigo-400 bg-slate-50"
-                      }`}
-                    >
-                      <input
-                        ref={fileInputRef2}
-                        type="file"
-                        accept=".tif,.tiff,.png,.jpg,.jpeg"
-                        onChange={(e) => handleFileUpload(e, 2)}
-                        className="hidden"
-                      />
-                      <UploadCloud className="w-5 h-5 text-indigo-400 mb-1" />
-                      <p className="text-xs font-semibold text-center truncate max-w-[140px]">
-                        {file2Info ? file2Info.name : `Upload ${activeTab === "Optical + SAR" ? "SAR (TIFF)" : "T2 Image"}`}
-                      </p>
-                      <span className={`text-[10px] ${darkMode ? "text-slate-500" : "text-slate-400"}`}>
-                        GeoTIFF / TIFF • Max 200MB
-                      </span>
-                    </div>
-                  )}
+              {(activeTab === "Optical + SAR" || activeTab === "Change Detection") && (
+                <div
+                  onClick={() => fileInputRef2.current.click()}
+                  className={`px-5 py-4 rounded-xl border-2 border-dashed flex items-center gap-3 cursor-pointer ${
+                    darkMode ? "border-[#222E54] hover:border-indigo-500 bg-[#090D1C]" : "border-slate-300 hover:border-indigo-400 bg-slate-50"
+                  }`}
+                >
+                  <input ref={fileInputRef2} type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" onChange={(e) => handleFileUpload(e, 2)} className="hidden" />
+                  <UploadCloud className="w-5 h-5 text-purple-400" />
+                  <div>
+                    <p className="text-xs font-semibold">{file2Name || "Select Secondary Image"}</p>
+                    <p className="text-[10px] text-slate-500">Pair Image (SAR or T2)</p>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* DEDICATED AGENT RESPONSE & MULTI-MODEL WORKSPACE */}
-          <div className={`p-6 rounded-2xl border ${
-            darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"
-          }`}>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-inherit">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 border border-indigo-500/30">
-                  <Bot className="w-3.5 h-3.5" /> Agent Intelligence Workspace
-                </span>
-                <span className="text-xs text-slate-400 font-mono">
-                  Confidence: <span className="text-emerald-400 font-bold">{analysisResult.confidenceScore}</span>
-                </span>
-              </div>
-
-              {/* Sub-tabs to switch agent view */}
-              <div className="flex items-center gap-1.5 bg-slate-900/60 p-1 rounded-xl border border-white/5">
-                {[
-                  { id: "executive", label: "Executive Synthesis", icon: MessageSquare },
-                  { id: "consensus", label: "Multi-Model Consensus", icon: Cpu },
-                  { id: "analytics", label: "Spectral & Spatial Graphs", icon: BarChart3 }
-                ].map((st) => {
-                  const Icon = st.icon;
-                  const isSel = responseTab === st.id;
-                  return (
-                    <button
-                      key={st.id}
-                      onClick={() => setResponseTab(st.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                        isSel
-                          ? "bg-indigo-600 text-white shadow"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      {st.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* TAB 1: EXECUTIVE SYNTHESIS */}
-            {responseTab === "executive" && (
-              <div className="space-y-4">
-                <div className={`p-4 rounded-xl border ${
-                  darkMode ? "bg-[#0E152E] border-indigo-500/20" : "bg-indigo-50/50 border-indigo-100"
-                }`}>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-1 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Synthesized Agent Verdict
-                  </h4>
-                  <p className="text-sm leading-relaxed font-normal">
-                    {analysisResult.executiveSummary}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-                  <div className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
-                    <span className="text-[10px] text-slate-400 block uppercase font-mono">NDWI (Water Absorption)</span>
-                    <span className="text-xs font-bold text-sky-400">{analysisResult.spectralMetrics.ndwi_water_index}</span>
-                  </div>
-                  <div className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
-                    <span className="text-[10px] text-slate-400 block uppercase font-mono">NDVI (Vegetation Index)</span>
-                    <span className="text-xs font-bold text-emerald-400">{analysisResult.spectralMetrics.ndvi_veg_vigor}</span>
-                  </div>
-                  <div className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
-                    <span className="text-[10px] text-slate-400 block uppercase font-mono">SAR Polarimetric Signal</span>
-                    <span className="text-xs font-bold text-purple-400">{analysisResult.spectralMetrics.sar_roughness}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: MULTI-MODEL CONSENSUS */}
-            {responseTab === "consensus" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className={`p-4 rounded-xl border ${
-                  darkMode ? "bg-[#070B18] border-[#1E2A50]" : "bg-slate-50 border-slate-200"
-                }`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                    <h4 className="text-xs font-bold text-indigo-300">Model 1: GeoChat-7B (Remote-Sensing Specialist)</h4>
-                  </div>
-                  <p className="text-xs leading-relaxed text-slate-300">
-                    {analysisResult.consensus.geochat_specialist}
-                  </p>
-                  <span className="mt-3 inline-block text-[10px] text-slate-400 font-mono">
-                    Adapted via BigEarthNet & VRSBench
-                  </span>
-                </div>
-
-                <div className={`p-4 rounded-xl border ${
-                  darkMode ? "bg-[#070B18] border-[#1E2A50]" : "bg-slate-50 border-slate-200"
-                }`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-purple-500" />
-                    <h4 className="text-xs font-bold text-purple-300">Model 2: High-Resolution Generic VLM</h4>
-                  </div>
-                  <p className="text-xs leading-relaxed text-slate-300">
-                    {analysisResult.consensus.generic_vlm}
-                  </p>
-                  <span className="mt-3 inline-block text-[10px] text-slate-400 font-mono">
-                    Zero-shot Grounding & Spatial Geometry
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: SPATIAL & SPECTRAL GRAPHS */}
-            {responseTab === "analytics" && (
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-xs font-bold mb-2 flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-indigo-400" /> Land-Cover Distribution Breakdown
-                  </h4>
-                  <div className="space-y-2">
-                    {analysisResult.classDistribution.map((item, idx) => (
-                      <div key={idx} className="space-y-1">
-                        <div className="flex justify-between text-xs font-medium">
-                          <span className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: item.color }} />
-                            {item.label}
-                          </span>
-                          <span className="font-mono text-slate-300">{item.percentage}%</span>
-                        </div>
-                        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Results Viewport (Viewer + Bounding Polygons) */}
-          <div className={`p-6 rounded-2xl border ${
-            darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"
-          }`}>
-            <div className="flex items-center justify-between mb-4">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                <Layers className="w-3.5 h-3.5" /> Spatial Visual Grounding
+          {/* AI Response Card */}
+          <div className={`p-6 rounded-2xl border ${darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200"}`}>
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-inherit">
+              <span className="text-xs font-semibold text-indigo-400 flex items-center gap-1.5">
+                <Bot className="w-4 h-4" /> Vision-Language Model Finding
               </span>
-              <button
-                onClick={() => setShowTraceModal(true)}
-                className={`text-xs flex items-center gap-1.5 px-3 py-1 rounded-lg border transition-all ${
-                  darkMode ? "border-[#1E294B] text-slate-300 hover:bg-[#141C38]" : "border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <Cpu className="w-3.5 h-3.5 text-indigo-400" /> View Agentic Trace
-              </button>
+              <span className="text-xs font-mono text-emerald-400">
+                Confidence: {analysisResult.confidenceScore}
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* Feature Listing */}
-              <div className="lg:col-span-5 space-y-4">
-                <div className="space-y-3.5">
-                  {analysisResult.features.map((item) => (
-                    <div key={item.id} className="flex items-start gap-3 text-xs">
-                      <div
-                        className="w-5 h-5 rounded-md mt-0.5 flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${item.color}25`, color: item.color }}
-                      >
-                        <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: item.color }} />
-                      </div>
-                      <div>
-                        <span className="font-semibold">{item.name}</span>
-                        <p className={darkMode ? "text-slate-400" : "text-slate-500"}>{item.desc}</p>
-                      </div>
-                    </div>
-                  ))}
+            <div className="mb-5">
+              <h3 className="text-base font-bold mb-1">{analysisResult.title}</h3>
+              <p className="text-sm leading-relaxed text-slate-300">{analysisResult.executiveSummary}</p>
+            </div>
+
+            {/* Graphs / Metric Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+              {Object.entries(analysisResult.spectralMetrics).map(([k, v], idx) => (
+                <div key={idx} className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
+                  <span className="text-[10px] text-slate-400 block uppercase font-mono">{k}</span>
+                  <span className="text-xs font-bold text-indigo-400">{v}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Visualizer & Vector Polygons */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <div className="lg:col-span-8 rounded-2xl overflow-hidden border border-inherit relative bg-black">
+                <div
+                  className="relative w-full h-[400px] overflow-hidden"
+                  style={{ transform: `scale(${zoomLevel})`, transformOrigin: "center center" }}
+                >
+                  <img src={analysisResult.previewUrl} alt="Satellite Output" className="w-full h-full object-cover" />
+                  {showOverlays && (
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1024 1024" preserveAspectRatio="none">
+                      {analysisResult.features.map((f) => (
+                        <polygon key={f.id} points={f.points} fill={`${f.color}40`} stroke={f.color} strokeWidth="3.5" />
+                      ))}
+                    </svg>
+                  )}
                 </div>
               </div>
 
-              {/* Imagery & SVG Overlays */}
-              <div className="lg:col-span-7 flex flex-col md:flex-row gap-4">
-                <div className={`relative flex-1 rounded-2xl overflow-hidden border ${
-                  darkMode ? "border-[#1C2648] bg-black" : "border-slate-200 bg-slate-100"
-                }`}>
-                  <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg">
-                    <button
-                      onClick={() => setZoomLevel((z) => Math.min(z + 0.2, 2.2))}
-                      className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition"
-                      title="Zoom In"
-                    >
-                      <ZoomIn className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setZoomLevel((z) => Math.max(z - 0.2, 0.8))}
-                      className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition"
-                      title="Zoom Out"
-                    >
-                      <ZoomOut className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setShowOverlays(!showOverlays)}
-                      className={`p-1.5 rounded-lg transition ${
-                        showOverlays ? "text-indigo-400 bg-indigo-500/20" : "text-slate-300 hover:bg-white/10"
-                      }`}
-                      title="Toggle Vector Layers"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setZoomLevel(1)}
-                      className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition"
-                      title="Reset View"
-                    >
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    </button>
+              {/* Dynamic Legend */}
+              <div className="lg:col-span-4 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <BarChart3 className="w-3.5 h-3.5" /> Detected Class Distribution
+                </h4>
+                {analysisResult.classDistribution.map((item, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: item.color }} />
+                        {item.name}
+                      </span>
+                      <span className="font-mono text-slate-400">{item.percentage}%</span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${item.percentage}%`, backgroundColor: item.color }} />
+                    </div>
                   </div>
-
-                  <div
-                    className="relative w-full h-[360px] overflow-hidden transition-transform duration-200"
-                    style={{ transform: `scale(${zoomLevel})`, transformOrigin: "center center" }}
-                  >
-                    <img
-                      src={analysisResult.previewUrl}
-                      alt="Satellite Preview"
-                      className="w-full h-full object-cover select-none"
-                    />
-
-                    {showOverlays && (
-                      <svg
-                        className="absolute inset-0 w-full h-full pointer-events-none"
-                        viewBox="0 0 1024 1024"
-                        preserveAspectRatio="none"
-                      >
-                        {analysisResult.features.map((feature) => (
-                          <polygon
-                            key={feature.id}
-                            points={feature.points}
-                            fill={`${feature.color}33`}
-                            stroke={feature.color}
-                            strokeWidth="3.5"
-                            strokeDasharray={feature.id === "roads" ? "6,4" : "none"}
-                          />
-                        ))}
-                      </svg>
-                    )}
-                  </div>
-                </div>
-
-                <div className={`p-4 rounded-xl border w-full md:w-44 shrink-0 ${
-                  darkMode ? "bg-[#090D1C] border-[#1C2648]" : "bg-slate-50 border-slate-200"
-                }`}>
-                  <h4 className="text-xs font-semibold mb-3">Grounding Legend</h4>
-                  <div className="space-y-2.5">
-                    {analysisResult.features.map((obj) => (
-                      <div key={obj.id} className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: obj.color }} />
-                        <span className={`text-[11px] truncate ${darkMode ? "text-slate-300" : "text-slate-700"}`}>
-                          {obj.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
       </main>
 
-      {/* Execution Trace Modal */}
+      {/* Trace Modal */}
       {showTraceModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`w-full max-w-2xl rounded-2xl border p-6 shadow-2xl ${
-            darkMode ? "bg-[#0B1021] border-[#1F2B48]" : "bg-white border-slate-200"
-          }`}>
-            <div className="flex items-center justify-between pb-4 border-b border-inherit">
-              <div className="flex items-center gap-2">
-                <Terminal className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-sm">Auditable Multi-Agent Trace</h3>
-              </div>
-              <button
-                onClick={() => setShowTraceModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <pre className={`mt-4 p-4 rounded-xl text-[11px] font-mono overflow-x-auto ${
-              darkMode ? "bg-[#070A14] text-emerald-400" : "bg-slate-900 text-emerald-300"
-            }`}>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-[#0B1021] border border-[#1F2B48] p-6 rounded-2xl max-w-xl w-full">
+            <h3 className="font-bold text-sm mb-3 text-indigo-400">Auditable Execution Summary</h3>
+            <pre className="bg-[#070A14] text-emerald-400 p-4 rounded-xl text-xs overflow-auto max-h-96">
               {JSON.stringify(analysisResult.executionTrace, null, 2)}
             </pre>
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                onClick={downloadAuditReport}
-                className="px-4 py-2 border border-[#1E294B] text-slate-300 hover:bg-[#151D37] rounded-xl text-xs font-semibold flex items-center gap-1.5"
-              >
-                <Download className="w-3.5 h-3.5" /> Download Report
-              </button>
-              <button
-                onClick={() => setShowTraceModal(false)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold"
-              >
-                Done
-              </button>
-            </div>
+            <button onClick={() => setShowTraceModal(false)} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">
+              Close
+            </button>
           </div>
         </div>
       )}
