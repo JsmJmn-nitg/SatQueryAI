@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 
 export default function SatQueryApp() {
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(false); // Default to Light Mode
   const [activeTab, setActiveTab] = useState("Single Image");
   const [query, setQuery] = useState("Identify the top 4 critical features and hazards. How many rivers are visible, and what percentage of the image is covered by urban settlement?");
   const [loading, setLoading] = useState(false);
@@ -32,28 +32,25 @@ export default function SatQueryApp() {
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   const [image1, setImage1] = useState(null);
-  const [file1Name, setFile1Name] = useState("sample.tif");
+  const [file1Name, setFile1Name] = useState("No image selected");
 
   const [analysisResult, setAnalysisResult] = useState({
-    title: "Littoral Coastal Barrier & Urban Settlement Assessment",
+    title: "SatQuery AI - Ready",
     directQueryAnswers: {
-      hydrology_and_waterways: "0 inland rivers detected. The massive water body occupying the western flank is open marine sea/ocean, not a river.",
-      urban_settlement_coverage: "Approximately 32.4% of the image is covered by urban settlement, concentrated in the southern and eastern sectors.",
-      hazards_and_vulnerabilities: "High coastal storm surge and littoral erosion risk along the narrow sandy barrier."
+      hydrology_and_waterways: "Awaiting image upload and analysis.",
+      urban_settlement_coverage: "Awaiting image upload and analysis.",
+      hazards_and_vulnerabilities: "Awaiting image upload and analysis."
     },
-    comprehensiveAssessment: "Multispectral analysis resolves a distinct geomorphic boundary separating open marine waters from inland development. The intertidal sandy beach functions as the primary energy-dissipating barrier against wave action. Anthropogenic development is characterized by high building density and asphalt road networks, bordered to the north-east by greenhouse agriculture.",
+    comprehensiveAssessment: "Upload any satellite GeoTIFF or photo. SatQuery AI will automatically detect the scene domain (wildfire, coast, flood, urban) and compute precise pixel-grounded metrics.",
     confidenceScore: "0.95",
     previewUrl: "https://images.unsplash.com/photo-1524813686514-a57563d77d66?auto=format&fit=crop&w=1200&q=80",
     classDistribution: [
-      { name: "Open Marine Waters", percentage: 38, color: "#0EA5E9", description: "Deep marine surface showing strong NIR absorption." },
-      { name: "Intertidal Sand Beach", percentage: 14, color: "#F59E0B", description: "Continuous coastal barrier sand berm." },
-      { name: "Dense Urban Settlement", percentage: 32, color: "#EF4444", description: "High-density residential and commercial infrastructure." },
-      { name: "Agricultural Parcels", percentage: 16, color: "#10B981", description: "Structured crop parcels and vegetation canopy." }
+      { name: "Ready for Analysis", percentage: 100, color: "#6366F1", description: "Upload an image to start." }
     ],
     spectralMetrics: {
-      "Water Index (NDWI)": "+0.56 (Deep Water)",
-      "Built-Up Index (NDBI)": "+0.34 (Dense Impervious)",
-      "Canopy Vigor (NDVI)": "+0.48 (Cultivated Crops)"
+      "Status": "System Operational",
+      "Model": "Qwen2.5-VL-7B (4-Bit Active)",
+      "Resolution": "Ground-Level Adaptive"
     },
     features: [],
     executionTrace: {}
@@ -106,10 +103,10 @@ export default function SatQueryApp() {
   };
 
   return (
-    <div className={`min-h-screen flex ${darkMode ? "bg-[#090D1A] text-slate-100" : "bg-[#F8FAFC] text-slate-800"}`}>
+    <div className={`min-h-screen flex ${darkMode ? "bg-[#090D1A] text-slate-100" : "bg-[#F1F5F9] text-slate-900"}`}>
       {/* Sidebar */}
       <aside className={`w-64 border-r flex flex-col justify-between p-4 ${
-        darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200"
+        darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"
       }`}>
         <div>
           <div className="flex items-center gap-3 px-2 py-3 mb-6">
@@ -117,14 +114,14 @@ export default function SatQueryApp() {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-base tracking-tight leading-none">SatQuery AI</h1>
-              <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-500"}`}>Earth Observation AI</span>
+              <h1 className="font-bold text-base tracking-tight leading-none text-slate-900 dark:text-white">SatQuery AI</h1>
+              <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-500 font-medium"}`}>Earth Observation AI</span>
             </div>
           </div>
 
           <nav className="space-y-1.5">
-            <button className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium ${
-              darkMode ? "bg-[#18213F] text-indigo-300" : "bg-indigo-50 text-indigo-600"
+            <button className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold ${
+              darkMode ? "bg-[#18213F] text-indigo-300" : "bg-indigo-50 text-indigo-700"
             }`}>
               <Home className="w-4 h-4" /> Home
             </button>
@@ -134,15 +131,15 @@ export default function SatQueryApp() {
                 darkMode ? "text-slate-400 hover:bg-[#151D37]" : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              <Terminal className="w-4 h-4 text-emerald-400" /> Execution Trace
+              <Terminal className="w-4 h-4 text-emerald-500" /> Execution Trace
             </button>
           </nav>
         </div>
 
         <button
           onClick={() => setDarkMode(!darkMode)}
-          className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs font-medium ${
-            darkMode ? "bg-[#0F162E] border-[#1E294B] text-slate-300" : "bg-white border-slate-200 text-slate-700"
+          className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold ${
+            darkMode ? "bg-[#0F162E] border-[#1E294B] text-slate-300" : "bg-slate-50 border-slate-200 text-slate-700"
           }`}
         >
           <div className="flex items-center gap-2">
@@ -160,20 +157,20 @@ export default function SatQueryApp() {
           <div className={`p-6 rounded-2xl border ${
             darkMode ? "bg-[#0D1224] border-[#1C2648]" : "bg-white border-slate-200 shadow-sm"
           }`}>
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              Deep Satellite Intelligence <span className="text-xs font-normal text-slate-400">• Multi-Question Reasoning</span>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
+              Deep Satellite Intelligence <span className="text-xs font-normal text-slate-500">• Multi-Scene Grounding</span>
             </h2>
 
             <div className={`flex items-center rounded-2xl border p-1.5 mb-4 ${
-              darkMode ? "bg-[#090D1C] border-[#222E54]" : "bg-slate-50 border-slate-200"
+              darkMode ? "bg-[#090D1C] border-[#222E54]" : "bg-slate-50 border-slate-300"
             }`}>
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && executeAnalysis()}
-                placeholder="Ask specific questions about rivers, urban %, hazards, land-cover..."
-                className={`w-full bg-transparent px-4 py-2.5 text-sm outline-none ${darkMode ? "text-white" : "text-slate-900"}`}
+                placeholder="Ask specific questions about fires, floods, rivers, urban %, hazards..."
+                className={`w-full bg-transparent px-4 py-2.5 text-sm outline-none ${darkMode ? "text-white" : "text-slate-900 font-medium"}`}
               />
               <button
                 onClick={executeAnalysis}
@@ -191,9 +188,9 @@ export default function SatQueryApp() {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border ${
                     activeTab === tab
-                      ? darkMode ? "bg-[#1C2448] border-indigo-500 text-white" : "bg-indigo-50 border-indigo-400 text-indigo-700"
+                      ? darkMode ? "bg-[#1C2448] border-indigo-500 text-white" : "bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm"
                       : darkMode ? "bg-[#0F152C] border-[#1C2648] text-slate-400" : "bg-white border-slate-200 text-slate-600"
                   }`}
                 >
@@ -207,13 +204,13 @@ export default function SatQueryApp() {
               <div
                 onClick={() => fileInputRef1.current.click()}
                 className={`px-5 py-4 rounded-xl border-2 border-dashed flex items-center gap-3 cursor-pointer ${
-                  darkMode ? "border-[#222E54] hover:border-indigo-500 bg-[#090D1C]" : "border-slate-300 hover:border-indigo-400 bg-slate-50"
+                  darkMode ? "border-[#222E54] hover:border-indigo-500 bg-[#090D1C]" : "border-slate-300 hover:border-indigo-500 bg-slate-50"
                 }`}
               >
                 <input ref={fileInputRef1} type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" onChange={handleFileUpload} className="hidden" />
-                <UploadCloud className="w-5 h-5 text-indigo-400" />
+                <UploadCloud className="w-5 h-5 text-indigo-500" />
                 <div>
-                  <p className="text-xs font-semibold">{file1Name}</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{file1Name}</p>
                   <p className="text-[10px] text-slate-500">Upload any TIFF, GeoTIFF, PNG or JPEG satellite image</p>
                 </div>
               </div>
@@ -221,61 +218,62 @@ export default function SatQueryApp() {
           </div>
 
           {/* AI Response Card */}
-          <div className={`p-6 rounded-2xl border ${darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200"}`}>
+          <div className={`p-6 rounded-2xl border ${darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"}`}>
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-inherit">
-              <span className="text-xs font-semibold text-indigo-400 flex items-center gap-1.5">
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
                 <Bot className="w-4 h-4" /> Comprehensive Geospatial Assessment
               </span>
-              <span className="text-xs font-mono text-emerald-400 font-bold">
+              <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold">
                 Confidence: {analysisResult.confidenceScore}
               </span>
             </div>
 
-            <h3 className="text-lg font-bold mb-4 text-white">{analysisResult.title}</h3>
+            <h3 className="text-lg font-bold mb-4 text-slate-900 dark:text-white">{analysisResult.title}</h3>
 
-            {/* DIRECT QUERY Q&A SECTION (Answers specific questions like rivers & urban %) */}
-            {analysisResult.directQueryAnswers && Object.keys(analysisResult.directQueryAnswers).length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-                <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-sky-500/20" : "bg-sky-50/50 border-sky-100"}`}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Waves className="w-4 h-4 text-sky-400" />
-                    <span className="text-xs font-bold text-sky-300">Hydrological & River Analysis</span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {analysisResult.directQueryAnswers.hydrology_and_waterways}
-                  </p>
+            {/* DIRECT QUERY Q&A SECTION */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+              {/* Hydrology */}
+              <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-sky-500/20" : "bg-sky-50 border-sky-200"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Waves className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                  <span className="text-xs font-bold text-sky-900 dark:text-sky-300">Hydrological & River Analysis</span>
                 </div>
-
-                <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-rose-500/20" : "bg-rose-50/50 border-rose-100"}`}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Building2 className="w-4 h-4 text-rose-400" />
-                    <span className="text-xs font-bold text-rose-300">Urban Settlement Coverage</span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {analysisResult.directQueryAnswers.urban_settlement_coverage}
-                  </p>
-                </div>
-
-                <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-amber-500/20" : "bg-amber-50/50 border-amber-100"}`}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-bold text-amber-300">Hazards & Vulnerabilities</span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {analysisResult.directQueryAnswers.hazards_and_vulnerabilities}
-                  </p>
-                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
+                  {analysisResult.directQueryAnswers.hydrology_and_waterways}
+                </p>
               </div>
-            )}
 
-            {/* FULL MULTI-PARAGRAPH ASSESSMENT */}
+              {/* Urban */}
+              <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-rose-500/20" : "bg-rose-50 border-rose-200"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Building2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                  <span className="text-xs font-bold text-rose-900 dark:text-rose-300">Urban Settlement Coverage</span>
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
+                  {analysisResult.directQueryAnswers.urban_settlement_coverage}
+                </p>
+              </div>
+
+              {/* Hazards */}
+              <div className={`p-3.5 rounded-xl border ${darkMode ? "bg-[#0E152E] border-amber-500/20" : "bg-amber-50 border-amber-200"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-xs font-bold text-amber-900 dark:text-amber-300">Hazards & Vulnerabilities</span>
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
+                  {analysisResult.directQueryAnswers.hazards_and_vulnerabilities}
+                </p>
+              </div>
+            </div>
+
+            {/* FULL MULTI-PARAGRAPH ASSESSMENT (HIGH CONTRAST) */}
             <div className={`p-4 rounded-xl border mb-6 ${
               darkMode ? "bg-[#070A16] border-[#1A233D]" : "bg-slate-50 border-slate-200"
             }`}>
-              <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                <FileText className="w-3.5 h-3.5 text-indigo-400" /> Technical Intelligence Report
+              <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                <FileText className="w-3.5 h-3.5 text-indigo-500" /> Technical Intelligence Report
               </div>
-              <p className="text-xs leading-relaxed text-slate-200 whitespace-pre-line">
+              <p className="text-xs leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-line font-normal">
                 {analysisResult.comprehensiveAssessment}
               </p>
             </div>
@@ -284,8 +282,8 @@ export default function SatQueryApp() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
               {Object.entries(analysisResult.spectralMetrics).map(([k, v], idx) => (
                 <div key={idx} className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
-                  <span className="text-[10px] text-slate-400 block uppercase font-mono">{k}</span>
-                  <span className="text-xs font-bold text-indigo-400">{v}</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase font-mono">{k}</span>
+                  <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{v}</span>
                 </div>
               ))}
             </div>
@@ -347,8 +345,8 @@ export default function SatQueryApp() {
               {/* 4 DYNAMIC METRICS LIST */}
               <div className="lg:col-span-4 space-y-3.5">
                 <div className="flex items-center justify-between pb-1 border-b border-inherit">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <BarChart3 className="w-3.5 h-3.5 text-indigo-400" /> Detected Class Distribution
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400 flex items-center gap-1.5">
+                    <BarChart3 className="w-3.5 h-3.5 text-indigo-500" /> Detected Class Distribution
                   </h4>
                   <span className="text-[10px] text-slate-500 font-mono">4 Discrete Metrics</span>
                 </div>
@@ -367,7 +365,7 @@ export default function SatQueryApp() {
                       }`}
                     >
                       <div className="flex justify-between items-center text-xs mb-1.5">
-                        <span className="flex items-center gap-2 font-medium">
+                        <span className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
                           <span
                             className="w-4 h-4 rounded-md text-[10px] font-bold text-white flex items-center justify-center shrink-0"
                             style={{ backgroundColor: item.color }}
@@ -378,12 +376,12 @@ export default function SatQueryApp() {
                             {item.name}
                           </span>
                         </span>
-                        <span className="font-mono text-xs font-bold text-slate-300">
+                        <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
                           {item.percentage}%
                         </span>
                       </div>
 
-                      <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden mb-1.5">
+                      <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden mb-1.5">
                         <div
                           className="h-full rounded-full transition-all duration-500"
                           style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
@@ -391,7 +389,7 @@ export default function SatQueryApp() {
                       </div>
 
                       {item.description && (
-                        <p className="text-[10px] text-slate-400 leading-tight">
+                        <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight">
                           {item.description}
                         </p>
                       )}
@@ -407,9 +405,9 @@ export default function SatQueryApp() {
       {/* Trace Modal */}
       {showTraceModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-[#0B1021] border border-[#1F2B48] p-6 rounded-2xl max-w-xl w-full">
-            <h3 className="font-bold text-sm mb-3 text-indigo-400">Auditable Grounding Trace</h3>
-            <pre className="bg-[#070A14] text-emerald-400 p-4 rounded-xl text-xs overflow-auto max-h-96">
+          <div className="bg-white dark:bg-[#0B1021] border border-slate-200 dark:border-[#1F2B48] p-6 rounded-2xl max-w-xl w-full text-slate-900 dark:text-white">
+            <h3 className="font-bold text-sm mb-3 text-indigo-600 dark:text-indigo-400">Auditable Grounding Trace</h3>
+            <pre className="bg-slate-900 text-emerald-400 p-4 rounded-xl text-xs overflow-auto max-h-96">
               {JSON.stringify(analysisResult.executionTrace, null, 2)}
             </pre>
             <button onClick={() => setShowTraceModal(false)} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">

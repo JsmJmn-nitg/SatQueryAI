@@ -10,3 +10,5 @@ requests>=2.31.0
 tifffile>=2023.7.10
 qwen-vl-utils
 torchvision
+bitsandbytes
+accelerate
