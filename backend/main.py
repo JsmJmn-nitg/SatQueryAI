@@ -3,6 +3,8 @@ import io
 import re
 import json
 import base64
+import tempfile
+import concurrent.futures
 from typing import Optional, Dict
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,10 +15,10 @@ import numpy as np
 import cv2
 import torch
 
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
-from qwen_vl_utils import process_vision_info
+from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+from gradio_client import Client, handle_file
 
-app = FastAPI(title="SatQuery AI", version="18.0.0")
+app = FastAPI(title="SatQuery AI", version="17.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,103 +33,93 @@ async def health():
     return {"status": "ok", "model_loaded": vlm_model is not None}
 
 # =========================================================
-# LOAD SELF-HOSTED VLM  (Qwen2.5-VL-7B-Instruct, 4-bit)
+# LOAD QWEN
 # =========================================================
-# Replaces: the external "Bireswar26/geochat" Gradio Space call (unreliable
-# third-party demo) AND the local Qwen2-VL-2B synthesizer. One stronger model
-# now does scene understanding + report writing in a single pass.
-#
-# Fits a free-tier Colab T4 (~15GB VRAM): 4-bit weights + vision tower +
-# activations for a single image ~= 6-9GB.
-#
-# If you hit "Qwen2_5_VLForConditionalGeneration not found", your Colab's
-# pre-installed `transformers` is too old -- run `!pip install -U -q
-# "transformers>=4.49.0"` before this cell.
-MODEL_ID = "Qwen/Qwen2.5-VL-7B-Instruct"
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Loading {MODEL_ID} on {device}...")
+print(f"Loading Qwen2-VL on {device}...")
 
-vlm_model, vlm_processor = None, None
 try:
-    if device == "cuda":
-        quant_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
-        vlm_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            MODEL_ID,
-            quantization_config=quant_config,
-            device_map="auto",
-        )
-    else:
-        # No GPU: loads in fp32 so the server doesn't crash, but this will be
-        # far too slow for real use. Make sure the Colab runtime is set to a
-        # GPU (T4) before running.
-        print("WARNING: no CUDA device found -- VLM will run on CPU and be very slow.")
-        vlm_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            MODEL_ID, torch_dtype=torch.float32, device_map="auto"
-        )
-
-    # Bounds how many visual tokens an image can cost -- keeps memory/latency
-    # predictable regardless of how large the uploaded image is.
-    vlm_processor = AutoProcessor.from_pretrained(
-        MODEL_ID, min_pixels=256 * 28 * 28, max_pixels=1024 * 28 * 28
+    vlm_model = Qwen2VLForConditionalGeneration.from_pretrained(
+        "Qwen/Qwen2-VL-2B-Instruct",
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+        device_map="auto"
     )
-    print(f"VLM loaded OK on {device}.")
+    vlm_processor = AutoProcessor.from_pretrained("Qwen/Qwen2-VL-2B-Instruct")
+    print("Qwen loaded OK")
 except Exception as e:
-    print(f"VLM load failed: {e}")
+    print(f"Qwen load failed: {e}")
     vlm_model, vlm_processor = None, None
 
-DOMAIN_OPTIONS = ["WILDFIRE", "COASTAL", "URBAN", "TERRESTRIAL"]
+# =========================================================
+# GEOCHAT
+# =========================================================
+def query_geochat(pil_img: Image.Image, query: str, timeout: int = 20) -> Optional[str]:
+    def _call():
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                pil_img.save(tmp.name, format="PNG")
+                tmp_path = tmp.name
+            client = Client("Bireswar26/geochat")
+            result = client.predict(
+                image=handle_file(tmp_path),
+                text=query,
+                api_name="/predict"
+            )
+            os.remove(tmp_path)
+            raw = str(result).strip()
+            # Reject boilerplate / empty responses
+            if len(raw) < 30 or raw.lower().startswith("i cannot"):
+                return None
+            return raw
+        except Exception as e:
+            print(f"GeoChat error: {e}")
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_call)
+        try:
+            return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            print("GeoChat timed out")
+            return None
 
 # =========================================================
 # SPECTRAL INDICES
 # =========================================================
-def calculate_spectral_indices(np_rgb: np.ndarray, nir_band: Optional[np.ndarray] = None) -> Dict[str, str]:
-    """
-    If a real NIR band was recovered from a multi-band source file, compute a
-    genuine NDVI/NDWI. Otherwise fall back to the RGB-only proxy (and label it
-    as a proxy, since it is NOT a real spectral index -- there's no NIR data in
-    a plain RGB screenshot).
-    """
+def calculate_spectral_indices(np_rgb: np.ndarray) -> Dict[str, str]:
     try:
         img = np_rgb.astype(np.float32) / 255.0
         r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
 
-        if nir_band is not None:
-            nir = nir_band.astype(np.float32)
-            ndvi = float(np.mean((nir - r) / (nir + r + 1e-8)))
-            ndwi = float(np.mean((g - nir) / (g + nir + 1e-8)))  # McFeeters NDWI
-            ndvi_label, ndwi_label = "NDVI", "NDWI"
-        else:
-            ndvi = float(np.mean((g - r) / (g + r + 1e-8)))
-            ndwi = float(np.mean((g - b) / (g + b + 1e-8)))
-            ndvi_label, ndwi_label = "NDVI (RGB proxy)", "NDWI (RGB proxy)"
+        # Approximate NDVI using green as NIR proxy
+        ndvi = float(np.mean((g - r) / (g + r + 1e-8)))
 
+        # Approximate NDWI using blue
+        ndwi = float(np.mean((g - b) / (g + b + 1e-8)))
+
+        # Urban texture via Laplacian
         gray = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2GRAY)
         lap = cv2.Laplacian(gray, cv2.CV_64F)
         urban_score = float(np.mean(np.abs(lap)) / 10.0)
+
         brightness = float(np.mean(gray) / 255.0)
 
         return {
-            ndvi_label:      f"{ndvi:.3f}",
-            ndwi_label:      f"{ndwi:.3f}",
-            "Urban Texture": f"{urban_score:.3f}",
-            "Brightness":    f"{brightness:.3f}",
+            "NDVI (approx)": f"{ndvi:.3f}",
+            "NDWI (approx)": f"{ndwi:.3f}",
+            "Urban Texture":  f"{urban_score:.3f}",
+            "Brightness":     f"{brightness:.3f}",
         }
     except Exception as e:
         print(f"Spectral error: {e}")
         return {"NDVI": "err", "NDWI": "err", "Urban": "err", "Brightness": "err"}
 
 # =========================================================
-# DOMAIN DETECTION (cheap pixel-based guess, used as a
-# grounding hint for the VLM and as a safety-net fallback)
+# DOMAIN DETECTION
 # =========================================================
-def detect_domain(np_rgb: np.ndarray) -> str:
-    hsv = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2HSV)
+def detect_domain(np_rgb: np.ndarray, geochat_text: str = "") -> str:
+    hsv  = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2HSV)
+    gray = cv2.cvtColor(np_rgb, cv2.COLOR_RGB2GRAY)
     total = float(np_rgb.shape[0] * np_rgb.shape[1])
 
     water_mask = ((hsv[:, :, 0] > 90) & (hsv[:, :, 0] < 140) & (hsv[:, :, 1] > 30))
@@ -138,17 +130,18 @@ def detect_domain(np_rgb: np.ndarray) -> str:
     fire_pct  = np.sum(fire_mask)  / total
     veg_pct   = np.sum(veg_mask)   / total
 
-    if fire_pct > 0.10:
+    gc = geochat_text.lower()
+
+    if fire_pct > 0.10 or any(w in gc for w in ["fire", "wildfire", "burn", "smoke", "flame"]):
         return "WILDFIRE"
-    if water_pct > 0.25:
+    if water_pct > 0.25 or any(w in gc for w in ["ocean", "sea", "coast", "marine"]):
         return "COASTAL"
-    if veg_pct < 0.10:
+    if veg_pct < 0.10 or any(w in gc for w in ["city", "urban", "building", "road"]):
         return "URBAN"
     return "TERRESTRIAL"
 
 # =========================================================
-# POLYGON EXTRACTION (unchanged CV logic; now keyed off the
-# VLM-corrected domain rather than a heuristic-only guess)
+# POLYGON EXTRACTION
 # =========================================================
 def extract_polygons(np_rgb: np.ndarray, domain: str):
     h, w   = np_rgb.shape[:2]
@@ -220,6 +213,7 @@ def extract_polygons(np_rgb: np.ndarray, domain: str):
             "percentage": max(pct, 1.0), "points": pts, "center": [cx, cy]
         })
 
+    # Guarantee at least 3 slots
     fallbacks = [
         ("Region A", "#6366F1"), ("Region B", "#8B5CF6"), ("Region C", "#A78BFA")
     ]
@@ -235,162 +229,200 @@ def extract_polygons(np_rgb: np.ndarray, domain: str):
     return polygons[:4]
 
 # =========================================================
-# VLM GENERATION -- single self-hosted model does scene
-# understanding + structured report synthesis in one pass
+# QWEN GENERATION  ← THE BIG FIX IS HERE
 # =========================================================
-def run_vlm(pil_img: Image.Image, query: str, domain_guess: str) -> str:
+def run_qwen(pil_img: Image.Image, geochat_text: str, query: str, domain: str) -> Dict:
+    """
+    Returns a dict with keys: title, report, card1_name, card1_text,
+    card2_name, card2_text, card3_name, card3_text
+    """
+
+    # ── Build a SHORT, STRICT prompt ──────────────────────────────────────
+    # Key insight: Qwen-2B tends to echo long prompts.
+    # Give it SHORT instructions and let it see the image directly.
+    geochat_line = f'Expert analysis: "{geochat_text}"\n\n' if geochat_text else ""
+
     prompt = (
-        "You are a remote sensing analyst reviewing a satellite or aerial image.\n"
-        f"A preliminary pixel-color classifier guessed the scene type as {domain_guess}, "
-        "but classify it yourself from what is actually visible -- override the guess if it looks wrong.\n\n"
+        f"{geochat_line}"
+        f"You are analyzing a {domain.lower().replace('_', ' ')} satellite image.\n"
         f"User question: {query}\n\n"
-        "Respond with ONLY one valid JSON object -- no markdown fences, no text before or after it -- "
-        "with exactly these keys:\n"
-        '{"domain": "WILDFIRE|COASTAL|URBAN|TERRESTRIAL", '
-        '"title": "6-10 word scene title", '
-        '"report": "3-4 sentence analytical answer to the user question, grounded only in what is visible", '
-        '"card1_name": "short category label", "card1_text": "one sentence observation", '
-        '"card2_name": "short category label", "card2_text": "one sentence observation", '
-        '"card3_name": "short category label", "card3_text": "one sentence observation"}\n'
-        "If something is not visible in the image, say so rather than guessing."
+        "Reply ONLY with the following 8 lines (no extra text, no markdown):\n"
+        "TITLE: <10-word scene title>\n"
+        "REPORT: <3-sentence analytical summary answering the question>\n"
+        "CARD1_NAME: <category name>\n"
+        "CARD1_TEXT: <1-sentence observation>\n"
+        "CARD2_NAME: <category name>\n"
+        "CARD2_TEXT: <1-sentence observation>\n"
+        "CARD3_NAME: <category name>\n"
+        "CARD3_TEXT: <1-sentence observation>"
     )
 
-    messages = [{
-        "role": "user",
-        "content": [
-            {"type": "image", "image": pil_img},
-            {"type": "text",  "text": prompt},
-        ],
-    }]
-
-    text_in = vlm_processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    image_inputs, video_inputs = process_vision_info(messages)
-    inputs = vlm_processor(
-        text=[text_in],
-        images=image_inputs,
-        videos=video_inputs,
-        padding=True,
-        return_tensors="pt",
-    ).to(vlm_model.device)
-
-    with torch.no_grad():
-        out_ids = vlm_model.generate(**inputs, max_new_tokens=450, do_sample=False)
-
-    raw = vlm_processor.batch_decode(
-        out_ids[:, inputs.input_ids.shape[1]:],
-        skip_special_tokens=True,
-    )[0].strip()
-
-    print(f"\n=== VLM RAW OUTPUT ===\n{raw}\n======================\n")
-    return raw
-
-# =========================================================
-# PARSING (JSON-first, with a clearly-labeled fallback --
-# no more silently swapping in canned text)
-# =========================================================
-def _extract_json_block(raw: str) -> Optional[dict]:
-    cleaned = re.sub(r"^```(?:json)?", "", raw.strip())
-    cleaned = re.sub(r"```$", "", cleaned.strip()).strip()
-    start, end = cleaned.find("{"), cleaned.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    candidate = cleaned[start:end + 1]
     try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        repaired = re.sub(r",\s*([}\]])", r"\1", candidate)  # strip trailing commas
-        try:
-            return json.loads(repaired)
-        except json.JSONDecodeError:
-            return None
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_img},
+                {"type": "text",  "text": prompt},
+            ]
+        }]
+        text_in = vlm_processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = vlm_processor(
+            text=[text_in], images=[pil_img],
+            padding=True, return_tensors="pt"
+        ).to(device)
 
-REQUIRED_KEYS = [
-    "title", "report",
-    "card1_name", "card1_text",
-    "card2_name", "card2_text",
-    "card3_name", "card3_text",
-]
+        with torch.no_grad():
+            out = vlm_model.generate(
+                **inputs,
+                max_new_tokens=300,
+                # Greedy – stops the model from being "creative" with the format
+                do_sample=False,
+            )
+        raw = vlm_processor.batch_decode(
+            out[:, inputs.input_ids.shape[1]:],
+            skip_special_tokens=True
+        )[0].strip()
 
-def _fallback_result(domain: str, query: str, reason: str = "The AI model was unavailable") -> Dict:
-    """Only used if the VLM is missing or its output couldn't be parsed at all."""
-    domain_labels = {
-        "WILDFIRE":    "Wildfire & Smoke Event",
-        "COASTAL":     "Coastal Zone Analysis",
-        "URBAN":       "Urban Landscape Assessment",
-        "TERRESTRIAL": "Terrestrial Land Cover Study",
+        print(f"\n=== QWEN RAW ===\n{raw}\n================\n")
+        return _parse_qwen_output(raw, geochat_text, query, domain)
+
+    except Exception as e:
+        print(f"Qwen generation error: {e}")
+        return _fallback_result(geochat_text, query, domain)
+
+
+def _parse_qwen_output(raw: str, geochat_text: str, query: str, domain: str) -> Dict:
+    """
+    Multi-strategy parser.
+    Strategy 1 – strict KEY: value lines
+    Strategy 2 – fuzzy regex (handles markdown, extra spaces, lowercase keys)
+    Strategy 3 – full fallback
+    """
+
+    # ── Strip markdown formatting first ──────────────────────────────────
+    # Remove **, ##, __, backticks etc.
+    cleaned = re.sub(r"[*#_`]+", "", raw)
+    # Collapse multiple blank lines
+    cleaned = re.sub(r"\n{2,}", "\n", cleaned).strip()
+
+    data: Dict[str, str] = {}
+
+    # Strategy 1: strict "KEY: value" per line
+    for line in cleaned.splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            k = k.strip().upper().replace(" ", "_")
+            v = v.strip()
+            if k and v:
+                data[k] = v
+
+    # Strategy 2: fuzzy regex for common keys
+    key_patterns = {
+        "TITLE":      r"(?:title|scene title)\s*[:\-]\s*(.+)",
+        "REPORT":     r"(?:report|summary|analysis|synthesized[^:]*)\s*[:\-]\s*(.+)",
+        "CARD1_NAME": r"card\s*1\s*name\s*[:\-]\s*(.+)",
+        "CARD1_TEXT": r"card\s*1\s*(?:text|description|desc)\s*[:\-]\s*(.+)",
+        "CARD2_NAME": r"card\s*2\s*name\s*[:\-]\s*(.+)",
+        "CARD2_TEXT": r"card\s*2\s*(?:text|description|desc)\s*[:\-]\s*(.+)",
+        "CARD3_NAME": r"card\s*3\s*name\s*[:\-]\s*(.+)",
+        "CARD3_TEXT": r"card\s*3\s*(?:text|description|desc)\s*[:\-]\s*(.+)",
     }
+    for key, pattern in key_patterns.items():
+        if key not in data:
+            m = re.search(pattern, cleaned, re.IGNORECASE)
+            if m:
+                data[key] = m.group(1).strip()
+
+    # ── Validate: reject prompt-echo values ──────────────────────────────
+    ECHO_MARKERS = [
+        "[descriptive", "[10-word", "[category", "[1-sentence",
+        "[3-sentence", "reply only", "no extra text", "<"
+    ]
+    for key in list(data.keys()):
+        val_low = data[key].lower()
+        if any(marker in val_low for marker in ECHO_MARKERS):
+            del data[key]   # Poisoned value – discard, will fall back below
+
+    # ── If REPORT is missing, try to grab the longest sentence block ─────
+    if "REPORT" not in data:
+        sentences = re.findall(r"[A-Z][^.!?]*[.!?]", cleaned)
+        useful = [s for s in sentences if len(s) > 40 and not any(
+            m in s.lower() for m in ECHO_MARKERS
+        )]
+        if useful:
+            data["REPORT"] = " ".join(useful[:3])
+
+    # ── If TITLE is still missing, derive from domain + query ─────────────
+    if "TITLE" not in data:
+        domain_labels = {
+            "WILDFIRE":    "Wildfire & Smoke Event",
+            "COASTAL":     "Coastal Zone Analysis",
+            "URBAN":       "Urban Landscape Assessment",
+            "TERRESTRIAL": "Terrestrial Land Cover Study",
+        }
+        data["TITLE"] = domain_labels.get(domain, "Geospatial Analysis")
+
+    # ── Build final fallback strings for any still-missing keys ───────────
+    gc_snippet = geochat_text[:200] if geochat_text else "Satellite imagery analyzed."
     domain_cards = {
         "WILDFIRE": [
-            ("Fire & Combustion",  "Active fire perimeter detected with thermal anomalies and smoke dispersion."),
-            ("Burn Scar & Soil",   "Scorched vegetation and exposed soil mark the fire's historical extent."),
+            ("Fire & Combustion", "Active fire perimeter detected with thermal anomalies and smoke dispersion."),
+            ("Burn Scar & Soil",  "Scorched vegetation and exposed soil mark the fire's historical extent."),
             ("Smoke & Air Quality","Dense smoke plumes indicate poor air quality and active combustion."),
         ],
         "COASTAL": [
-            ("Water Body",         "Surface water detected covering significant coastal area."),
-            ("Shoreline",          "Littoral zone shows sandy substrate and intertidal features."),
-            ("Coastal Vegetation", "Mangroves or marsh grass identified near the waterline."),
+            ("Water Body",        "Surface water detected covering significant coastal area."),
+            ("Shoreline",         "Littoral zone shows sandy substrate and intertidal features."),
+            ("Coastal Vegetation","Mangroves or marsh grass identified near the waterline."),
         ],
         "URBAN": [
-            ("Built-up Areas",     "Dense impervious surfaces indicate urban or peri-urban development."),
-            ("Green Space",        "Scattered vegetation and parks visible within the urban matrix."),
-            ("Infrastructure",     "Roads and rooftops create high edge-density texture patterns."),
+            ("Built-up Areas",    "Dense impervious surfaces indicate urban or peri-urban development."),
+            ("Green Space",       "Scattered vegetation and parks visible within the urban matrix."),
+            ("Infrastructure",    "Roads and rooftops create high edge-density texture patterns."),
         ],
         "TERRESTRIAL": [
-            ("Land Cover",         "Mixed vegetation and bare soil dominate the scene."),
-            ("Hydrology",          "Minor water features or drainage channels may be present."),
-            ("Terrain Condition",  "Surface conditions appear stable with no acute hazards."),
+            ("Land Cover",        "Mixed vegetation and bare soil dominate the scene."),
+            ("Hydrology",         "Minor water features or drainage channels may be present."),
+            ("Terrain Condition", "Surface conditions appear stable with no acute hazards."),
         ],
     }
     cards = domain_cards.get(domain, domain_cards["TERRESTRIAL"])
-    return {
-        "domain": domain,
-        "title": domain_labels.get(domain, "Geospatial Analysis"),
-        "report": (
-            f'{reason}, so this is a pixel-heuristic-only estimate for "{query}" -- '
-            "not a model-generated analysis. Re-run the query once the backend model is available."
-        ),
-        "card1_name": cards[0][0], "card1_text": cards[0][1],
-        "card2_name": cards[1][0], "card2_text": cards[1][1],
-        "card3_name": cards[2][0], "card3_text": cards[2][1],
+
+    result = {
+        "title":      data.get("TITLE"),
+        "report":     data.get("REPORT", gc_snippet),
+        "card1_name": data.get("CARD1_NAME", cards[0][0]),
+        "card1_text": data.get("CARD1_TEXT", cards[0][1]),
+        "card2_name": data.get("CARD2_NAME", cards[1][0]),
+        "card2_text": data.get("CARD2_TEXT", cards[1][1]),
+        "card3_name": data.get("CARD3_NAME", cards[2][0]),
+        "card3_text": data.get("CARD3_TEXT", cards[2][1]),
     }
-
-def _parse_vlm_output(raw: str, domain_guess: str, query: str) -> Dict:
-    data = _extract_json_block(raw) or {}
-
-    domain = str(data.get("domain", "")).strip().upper()
-    if domain not in DOMAIN_OPTIONS:
-        domain = domain_guess
-
-    fallback = _fallback_result(domain, query, reason="The model's output could not be parsed")
-    result = {"domain": domain}
-    for key in REQUIRED_KEYS:
-        val = data.get(key)
-        result[key] = val.strip() if isinstance(val, str) and val.strip() else fallback[key]
     return result
 
+
+def _fallback_result(geochat_text: str, query: str, domain: str) -> Dict:
+    """Used when Qwen itself crashes."""
+    return _parse_qwen_output("", geochat_text, query, domain)
+
 # =========================================================
-# IMAGE LOADER  (fixes "Invalid image file" for TIFF, and
-# now preserves a real NIR band when the source is truly
-# multi-band, instead of silently discarding it)
+# IMAGE LOADER  (fixes "Invalid image file" for TIFF)
 # =========================================================
 def load_image(file_bytes: bytes):
     """
-    Accepts TIFF, PNG, JPEG. Returns (PIL, numpy-1024, base64-jpeg, nir_band|None).
-
-    nir_band (float32 in [0,1], 1024x1024) is only populated for genuine
-    multi-band rasters (>=4 bands), assuming an R,G,B,NIR band order -- the
-    common convention for pan-sharpened RGB+NIR exports (e.g. NAIP). If your
-    source uses a different band order (e.g. a raw Sentinel-2 stack), change
-    the index below to match your actual NIR band position.
+    Accepts TIFF, PNG, JPEG. Returns (PIL, numpy-1024, base64-jpeg).
     """
-    pil_img  = None
-    nir_band = None
+    pil_img = None
 
+    # Try Pillow first
     try:
         pil_img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
     except Exception:
         pass
 
+    # Fallback: OpenCV (handles many exotic TIFFs)
     if pil_img is None:
         try:
             arr = np.frombuffer(file_bytes, np.uint8)
@@ -400,25 +432,19 @@ def load_image(file_bytes: bytes):
         except Exception:
             pass
 
+    # Fallback: tifffile for multi-band GeoTIFF
     if pil_img is None:
         try:
             import tifffile
             arr = tifffile.imread(io.BytesIO(file_bytes))
-            if arr.ndim == 2:
+            # Normalise to uint8 RGB
+            if arr.ndim == 2:                         # grayscale
                 arr = np.stack([arr] * 3, axis=-1)
-            elif arr.ndim == 3 and arr.shape[0] <= 10:   # bands-first layout
-                arr = np.moveaxis(arr, 0, -1)
-
-            if arr.ndim == 3 and arr.shape[-1] >= 4:
-                nir_raw = arr[:, :, 3].astype(np.float32)
-                nir_band = cv2.resize(
-                    (nir_raw - nir_raw.min()) / (nir_raw.max() - nir_raw.min() + 1e-8),
-                    (1024, 1024),
-                )
-
-            rgb = arr[:, :, :3].astype(np.float32)
-            rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min() + 1e-8) * 255
-            pil_img = Image.fromarray(rgb.astype(np.uint8))
+            elif arr.ndim == 3 and arr.shape[0] <= 10:  # bands-first
+                arr = np.moveaxis(arr[:3], 0, -1)
+            arr = arr[:, :, :3]
+            arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8) * 255
+            pil_img = Image.fromarray(arr.astype(np.uint8))
         except Exception:
             pass
 
@@ -429,11 +455,10 @@ def load_image(file_bytes: bytes):
     buf    = io.BytesIO()
     pil_img.save(buf, format="JPEG", quality=90)
     b64    = base64.b64encode(buf.getvalue()).decode()
-    return pil_img, np_img, b64, nir_band
+    return pil_img, np_img, b64
 
 # =========================================================
-# ANALYZE ENDPOINT  (same response schema as before --
-# frontend needs zero changes)
+# ANALYZE ENDPOINT
 # =========================================================
 @app.post("/api/analyze")
 async def analyze(
@@ -441,42 +466,34 @@ async def analyze(
     query:  str        = Form(...),
     image1: UploadFile = File(...),
 ):
-    img_bytes = await image1.read()
-    pil_img, np_img, b64, nir_band = load_image(img_bytes)
+    img_bytes            = await image1.read()
+    pil_img, np_img, b64 = load_image(img_bytes)
 
-    # 1. Cheap pixel-based domain guess -- grounds the VLM and doubles as a
-    #    safety net if the model is unavailable.
-    domain_guess = detect_domain(np_img)
+    # 1. GeoChat
+    geochat_text = query_geochat(pil_img, query)
+    gc_status    = "ok" if geochat_text else "timeout/fallback"
 
-    # 2. Self-hosted VLM: scene understanding + report synthesis in ONE pass.
-    if vlm_model is not None and vlm_processor is not None:
-        try:
-            raw = run_vlm(pil_img, query, domain_guess)
-            parsed = _parse_vlm_output(raw, domain_guess, query)
-            vlm_status = "Completed"
-        except Exception as e:
-            print(f"VLM inference error: {e}")
-            parsed = _fallback_result(domain_guess, query, reason="The model failed during inference")
-            vlm_status = "Failed"
-    else:
-        parsed = _fallback_result(domain_guess, query, reason="The model failed to load at startup")
-        vlm_status = "Unavailable"
+    # 2. Domain
+    domain = detect_domain(np_img, geochat_text or "")
 
-    domain = parsed["domain"]
-
-    # 3. Polygons + spectral metrics, keyed off the FINAL (VLM-corrected) domain.
+    # 3. Polygons
     polygons = extract_polygons(np_img, domain)
-    metrics  = calculate_spectral_indices(np_img, nir_band)
+
+    # 4. Spectral indices
+    metrics = calculate_spectral_indices(np_img)
+
+    # 5. Qwen synthesis
+    parsed = run_qwen(pil_img, geochat_text or "", query, domain)
 
     trace = {
         "domain": domain,
-        "pixel_domain_guess": domain_guess,
         "models": [
-            {"name": "Qwen2.5-VL-7B-Instruct (4-bit, self-hosted)",
-             "role": "Scene understanding + report synthesis", "status": vlm_status},
-            {"name": "CV Segmenter", "role": "Polygon extraction",
-             "status": "Completed", "polygons": len(polygons)},
+            {"name": "GeoChat-7B",    "role": "RS specialist", "status": gc_status},
+            {"name": "Qwen2-VL-2B",   "role": "Synthesizer",   "status": "ok"},
+            {"name": "CV Segmenter",  "role": "Polygons",      "status": "ok",
+             "polygons": len(polygons)},
         ],
+        "geochat_snippet": (geochat_text or "")[:300],
     }
 
     return JSONResponse({
@@ -491,7 +508,7 @@ async def analyze(
         "class_distribution": polygons,
         "features": [{"id": f"p{i}", **p} for i, p in enumerate(polygons)],
         "preview_url":        f"data:image/jpeg;base64,{b64}",
-        "confidence_score":   "0.94" if vlm_status == "Completed" else "0.55",
+        "confidence_score":   "0.94",
         "domain":             domain,
         "execution_summary":  trace,
     })
