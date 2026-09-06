@@ -10,5 +10,7 @@ requests>=2.31.0
 tifffile>=2023.7.10
 qwen-vl-utils
 torchvision
-bitsandbytes
-accelerate
+bitsandbytes>=0.43.0
+accelerate>=0.27.0
+transformers>=4.45.0
+gradio_client
