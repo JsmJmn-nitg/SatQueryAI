@@ -14,3 +14,4 @@ bitsandbytes>=0.43.0
 accelerate>=0.27.0
 transformers>=4.45.0
 gradio_client
+sentencepiece
