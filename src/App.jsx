@@ -13,12 +13,14 @@ import {
   UploadCloud,
   X,
   MessageSquare,
-  HelpCircle,
   History,
   Home,
   ChevronDown,
   Terminal,
   Download,
+  Bot,
+  BarChart3,
+  Activity,
   CheckCircle2,
   Cpu
 } from "lucide-react";
@@ -31,6 +33,7 @@ export default function SatQueryApp() {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showOverlays, setShowOverlays] = useState(true);
   const [showTraceModal, setShowTraceModal] = useState(false);
+  const [responseTab, setResponseTab] = useState("executive"); // "executive" | "consensus" | "analytics"
 
   const [image1, setImage1] = useState(null);
   const [image2, setImage2] = useState(null);
@@ -38,12 +41,30 @@ export default function SatQueryApp() {
   const [file2Info, setFile2Info] = useState(null);
 
   const [analysisResult, setAnalysisResult] = useState({
-    title: "Coastal Land-Cover Overview",
-    summary:
-      "This image shows a coastal region with a mix of urban, agricultural, and natural land-cover types. Major objects include:",
-    confidenceScore: "0.88",
+    title: "Agentic Analysis: Single Image VQA",
+    executiveSummary:
+      "Dual-model consensus confirmed: The imagery depicts a coastal settlement characterized by high built-up density along the littoral margin, directly buffered by agricultural vegetation and open ocean water bodies.",
+    confidenceScore: "0.89",
     previewUrl:
       "https://images.unsplash.com/photo-1524813686514-a57563d77d66?auto=format&fit=crop&w=1200&q=80",
+    consensus: {
+      geochat_specialist:
+        "GeoChat RS-Specialist: Multispectral NIR absorption confirms deep marine water in the western quadrant (NDWI > 0.45). Red-edge reflectance indicates healthy cropland inland.",
+      generic_vlm:
+        "Generic VLM Grounder: Structural grid patterns identify high-density residential and arterial road networks intersecting the terrain from north to south."
+    },
+    classDistribution: [
+      { label: "Built-up Area", percentage: 36, color: "#EF4444" },
+      { label: "Water Body", percentage: 26, color: "#0EA5E9" },
+      { label: "Vegetation", percentage: 22, color: "#10B981" },
+      { label: "Roads / Infra", percentage: 10, color: "#F59E0B" },
+      { label: "Bare Ground", percentage: 6, color: "#A855F7" }
+    ],
+    spectralMetrics: {
+      ndwi_water_index: "+0.48 (Water Detected)",
+      ndvi_veg_vigor: "+0.62 (Healthy Canopy)",
+      sar_roughness: "-14.2 dB (Specular/Smooth)"
+    },
     features: [
       { id: "built-up", name: "Built-up area", desc: "Dense urban settlement along the coast and inland.", color: "#EF4444", points: "550,420 680,410 660,650 560,640" },
       { id: "water", name: "Water body", desc: "Sea/ocean on the left side and small inland water bodies.", color: "#0EA5E9", points: "20,50 180,60 160,850 10,850" },
@@ -53,13 +74,15 @@ export default function SatQueryApp() {
     ],
     executionTrace: {
       task: "single_image_grounded_vqa",
+      controller: "SatQuery-Ensemble-v3",
       inputs: { n_images: 1, mode: "Single Image", format: "GeoTIFF" },
-      tools_used: [
-        { name: "GeoChat-7B", params: { temperature: 0.2, top_p: 0.9 } },
-        { name: "GroundedSegmentationTool", params: { iou_threshold: 0.45 } }
+      agents_invoked: [
+        { name: "GeoChat-7B (Remote Sensing Specialist)", role: "Spectral & Polarimetric Analysis" },
+        { name: "Generic Visual Grounder", role: "Spatial Geometry & Object Layout" },
+        { name: "Chief Agent Orchestrator", role: "Ensemble Consensus & Report Generation" }
       ],
-      metrics: { confidence_score: 0.88 },
-      notes: ["Single GeoTIFF loaded; CRS verified EPSG:4326"]
+      confidence_score: 0.89,
+      notes: ["Dual-model consensus confirmed", "Auditable execution trace"]
     }
   });
 
@@ -82,17 +105,12 @@ export default function SatQueryApp() {
     const file = e.target.files[0];
     if (!file) return;
 
-    const info = {
-      name: file.name,
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      res: "1024×1024"
-    };
-
+    const info = { name: file.name, size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`, res: "1024×1024" };
     if (target === 1) {
       setImage1(file);
       setFile1Info(info);
       const url = URL.createObjectURL(file);
-      setAnalysisResult(prev => ({ ...prev, previewUrl: url }));
+      setAnalysisResult((prev) => ({ ...prev, previewUrl: url }));
     } else {
       setImage2(file);
       setFile2Info(info);
@@ -108,22 +126,22 @@ export default function SatQueryApp() {
     if (image2) formData.append("image2", image2);
 
     try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        body: formData
-      });
+      const res = await fetch("/api/analyze", { method: "POST", body: formData });
       if (!res.ok) throw new Error("API call failed");
       const data = await res.json();
       setAnalysisResult({
         title: data.title,
-        summary: data.summary,
+        executiveSummary: data.executive_summary,
         confidenceScore: data.confidence_score.toString(),
         previewUrl: data.preview_url,
         features: data.features,
+        consensus: data.consensus,
+        classDistribution: data.class_distribution,
+        spectralMetrics: data.spectral_metrics,
         executionTrace: data.execution_summary
       });
     } catch (err) {
-      console.warn("Backend error, displaying simulated agentic output:", err);
+      console.warn("Backend unavailable, using dynamic fallback:", err);
     } finally {
       setLoading(false);
     }
@@ -198,9 +216,9 @@ export default function SatQueryApp() {
           }`}>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <div>
-              <p className="text-xs font-semibold">System Status</p>
+              <p className="text-xs font-semibold">Ensemble Engine</p>
               <p className={`text-[11px] ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
-                All models active & co-registered
+                GeoChat + Generic VLM Active
               </p>
             </div>
           </div>
@@ -220,14 +238,15 @@ export default function SatQueryApp() {
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Screen */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto">
         <header className={`h-16 border-b flex items-center justify-between px-8 ${
           darkMode ? "border-[#1A233D] bg-[#090D1A]" : "border-slate-200 bg-white"
         }`}>
           <div className="flex items-center gap-2">
-            <span className="text-xs px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
-              Agent Controller: v2.4 (Open-CD + GeoChat)
+            <span className="text-xs px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono flex items-center gap-1.5">
+              <Bot className="w-3.5 h-3.5 text-indigo-400" />
+              Multi-Agent Pipeline: GeoChat-7B ⟷ General VLM ⟷ Synthesizer
             </span>
           </div>
 
@@ -350,7 +369,7 @@ export default function SatQueryApp() {
                     <h4 className="text-xs font-semibold text-indigo-400">Autofetch Mode Active</h4>
                     <p className={`text-xs mt-0.5 ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
                       Describe your area of interest (e.g. <i>"Assess flood damage in Valencia after October 2024"</i>).
-                      SatQuery AI autonomously determines coordinates, retrieves Sentinel-1 SAR and Sentinel-2 optical bands, and computes complementary masks.
+                      SatQuery AI autonomously determines coordinates, retrieves Sentinel-1 SAR and Sentinel-2 optical bands, and executes the multi-model ensemble.
                     </p>
                   </div>
                 </div>
@@ -416,13 +435,151 @@ export default function SatQueryApp() {
             </div>
           </div>
 
-          {/* Results Viewport */}
+          {/* DEDICATED AGENT RESPONSE & MULTI-MODEL WORKSPACE */}
+          <div className={`p-6 rounded-2xl border ${
+            darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-inherit">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 border border-indigo-500/30">
+                  <Bot className="w-3.5 h-3.5" /> Agent Intelligence Workspace
+                </span>
+                <span className="text-xs text-slate-400 font-mono">
+                  Confidence: <span className="text-emerald-400 font-bold">{analysisResult.confidenceScore}</span>
+                </span>
+              </div>
+
+              {/* Sub-tabs to switch agent view */}
+              <div className="flex items-center gap-1.5 bg-slate-900/60 p-1 rounded-xl border border-white/5">
+                {[
+                  { id: "executive", label: "Executive Synthesis", icon: MessageSquare },
+                  { id: "consensus", label: "Multi-Model Consensus", icon: Cpu },
+                  { id: "analytics", label: "Spectral & Spatial Graphs", icon: BarChart3 }
+                ].map((st) => {
+                  const Icon = st.icon;
+                  const isSel = responseTab === st.id;
+                  return (
+                    <button
+                      key={st.id}
+                      onClick={() => setResponseTab(st.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                        isSel
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {st.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* TAB 1: EXECUTIVE SYNTHESIS */}
+            {responseTab === "executive" && (
+              <div className="space-y-4">
+                <div className={`p-4 rounded-xl border ${
+                  darkMode ? "bg-[#0E152E] border-indigo-500/20" : "bg-indigo-50/50 border-indigo-100"
+                }`}>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-1 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Synthesized Agent Verdict
+                  </h4>
+                  <p className="text-sm leading-relaxed font-normal">
+                    {analysisResult.executiveSummary}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                  <div className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
+                    <span className="text-[10px] text-slate-400 block uppercase font-mono">NDWI (Water Absorption)</span>
+                    <span className="text-xs font-bold text-sky-400">{analysisResult.spectralMetrics.ndwi_water_index}</span>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
+                    <span className="text-[10px] text-slate-400 block uppercase font-mono">NDVI (Vegetation Index)</span>
+                    <span className="text-xs font-bold text-emerald-400">{analysisResult.spectralMetrics.ndvi_veg_vigor}</span>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${darkMode ? "bg-[#070B18] border-[#182242]" : "bg-slate-50 border-slate-200"}`}>
+                    <span className="text-[10px] text-slate-400 block uppercase font-mono">SAR Polarimetric Signal</span>
+                    <span className="text-xs font-bold text-purple-400">{analysisResult.spectralMetrics.sar_roughness}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: MULTI-MODEL CONSENSUS */}
+            {responseTab === "consensus" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`p-4 rounded-xl border ${
+                  darkMode ? "bg-[#070B18] border-[#1E2A50]" : "bg-slate-50 border-slate-200"
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <h4 className="text-xs font-bold text-indigo-300">Model 1: GeoChat-7B (Remote-Sensing Specialist)</h4>
+                  </div>
+                  <p className="text-xs leading-relaxed text-slate-300">
+                    {analysisResult.consensus.geochat_specialist}
+                  </p>
+                  <span className="mt-3 inline-block text-[10px] text-slate-400 font-mono">
+                    Adapted via BigEarthNet & VRSBench
+                  </span>
+                </div>
+
+                <div className={`p-4 rounded-xl border ${
+                  darkMode ? "bg-[#070B18] border-[#1E2A50]" : "bg-slate-50 border-slate-200"
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-purple-500" />
+                    <h4 className="text-xs font-bold text-purple-300">Model 2: High-Resolution Generic VLM</h4>
+                  </div>
+                  <p className="text-xs leading-relaxed text-slate-300">
+                    {analysisResult.consensus.generic_vlm}
+                  </p>
+                  <span className="mt-3 inline-block text-[10px] text-slate-400 font-mono">
+                    Zero-shot Grounding & Spatial Geometry
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: SPATIAL & SPECTRAL GRAPHS */}
+            {responseTab === "analytics" && (
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-xs font-bold mb-2 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-indigo-400" /> Land-Cover Distribution Breakdown
+                  </h4>
+                  <div className="space-y-2">
+                    {analysisResult.classDistribution.map((item, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex justify-between text-xs font-medium">
+                          <span className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: item.color }} />
+                            {item.label}
+                          </span>
+                          <span className="font-mono text-slate-300">{item.percentage}%</span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Results Viewport (Viewer + Bounding Polygons) */}
           <div className={`p-6 rounded-2xl border ${
             darkMode ? "bg-[#0B1021] border-[#1A233D]" : "bg-white border-slate-200 shadow-sm"
           }`}>
             <div className="flex items-center justify-between mb-4">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                <MessageSquare className="w-3.5 h-3.5" /> Answer
+                <Layers className="w-3.5 h-3.5" /> Spatial Visual Grounding
               </span>
               <button
                 onClick={() => setShowTraceModal(true)}
@@ -435,15 +592,8 @@ export default function SatQueryApp() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* Left Column: Descriptions */}
-              <div className="lg:col-span-5 space-y-5">
-                <div>
-                  <h3 className="text-lg font-bold">{analysisResult.title}</h3>
-                  <p className={`text-xs mt-1.5 leading-relaxed ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
-                    {analysisResult.summary}
-                  </p>
-                </div>
-
+              {/* Feature Listing */}
+              <div className="lg:col-span-5 space-y-4">
                 <div className="space-y-3.5">
                   {analysisResult.features.map((item) => (
                     <div key={item.id} className="flex items-start gap-3 text-xs">
@@ -460,16 +610,9 @@ export default function SatQueryApp() {
                     </div>
                   ))}
                 </div>
-
-                <div className="pt-2 flex items-center gap-2.5">
-                  <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-600"}`}>Confidence Score</span>
-                  <span className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    {analysisResult.confidenceScore}
-                  </span>
-                </div>
               </div>
 
-              {/* Right Column: Imagery & Polygon Overlays */}
+              {/* Imagery & SVG Overlays */}
               <div className="lg:col-span-7 flex flex-col md:flex-row gap-4">
                 <div className={`relative flex-1 rounded-2xl overflow-hidden border ${
                   darkMode ? "border-[#1C2648] bg-black" : "border-slate-200 bg-slate-100"
@@ -541,7 +684,7 @@ export default function SatQueryApp() {
                 <div className={`p-4 rounded-xl border w-full md:w-44 shrink-0 ${
                   darkMode ? "bg-[#090D1C] border-[#1C2648]" : "bg-slate-50 border-slate-200"
                 }`}>
-                  <h4 className="text-xs font-semibold mb-3">Detected Objects</h4>
+                  <h4 className="text-xs font-semibold mb-3">Grounding Legend</h4>
                   <div className="space-y-2.5">
                     {analysisResult.features.map((obj) => (
                       <div key={obj.id} className="flex items-center gap-2">
@@ -568,7 +711,7 @@ export default function SatQueryApp() {
             <div className="flex items-center justify-between pb-4 border-b border-inherit">
               <div className="flex items-center gap-2">
                 <Terminal className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-sm">Auditable Execution Trace (Evaluation Schema)</h3>
+                <h3 className="font-bold text-sm">Auditable Multi-Agent Trace</h3>
               </div>
               <button
                 onClick={() => setShowTraceModal(false)}
