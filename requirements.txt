@@ -8,3 +8,5 @@ opencv-python-headless>=4.8.0
 huggingface_hub>=0.23.0
 requests>=2.31.0
 tifffile>=2023.7.10
+qwen-vl-utils
+torchvision
